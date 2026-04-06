@@ -1,0 +1,13 @@
+.DS_Store
+.claude/
+__pycache__/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+backend/.venv/
+backend/.env
+backend/apprentice_ai.db
+frontend/node_modules/
+frontend/dist/
+frontend/.env
+deploy/.env.server
