@@ -16,6 +16,9 @@ services:
     build:
       context: ./backend
       dockerfile: Dockerfile
+      args:
+        PIP_INDEX_URL: https://pypi.tuna.tsinghua.edu.cn/simple
+        PIP_TRUSTED_HOST: pypi.tuna.tsinghua.edu.cn
     restart: unless-stopped
     env_file:
       - ./deploy/.env.server
@@ -31,6 +34,7 @@ services:
       dockerfile: Dockerfile.prod
       args:
         VITE_API_BASE_URL: /api
+        NPM_REGISTRY: https://registry.npmmirror.com
     restart: unless-stopped
     depends_on:
       - backend
