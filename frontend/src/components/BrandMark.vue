@@ -1,0 +1,31 @@
+<template>
+  <svg
+    :width="size"
+    :height="size"
+    viewBox="0 0 64 64"
+    fill="none"
+    xmlns="http://www.w3.org/2000/svg"
+    aria-hidden="true"
+  >
+    <rect width="64" height="64" rx="20" fill="#F4FBF9" />
+    <path
+      d="M19 19.5C19 16.4624 21.4624 14 24.5 14H39.5C42.5376 14 45 16.4624 45 19.5V31.5C45 34.5376 42.5376 37 39.5 37H30.5L24.5 43V37C21.4624 37 19 34.5376 19 31.5V19.5Z"
+      fill="#D5F5EF"
+      stroke="#0D9488"
+      stroke-width="3"
+      stroke-linejoin="round"
+    />
+    <path d="M23 24C23 22.3431 24.3431 21 26 21H32C33.1046 21 34 21.8954 34 23V39L28.5 35.5L23 39V24Z" fill="#F97316" />
+    <path d="M34 23C34 21.8954 34.8954 21 36 21H42C43.6569 21 45 22.3431 45 24V39L39.5 35.5L34 39V23Z" fill="#0D9488" />
+  </svg>
+</template>
+
+<script setup>
+defineProps({
+  size: {
+    type: [Number, String],
+    default: 40,
+  },
+});
+</script>
+
