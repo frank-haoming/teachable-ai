@@ -12,6 +12,11 @@ class SessionCreateRequest(BaseModel):
     class_id: int
     session_type: str
     title: str | None = Field(default=None, max_length=200)
+    ai_name: str | None = Field(default=None, max_length=40)
+
+
+class SessionUpdateRequest(BaseModel):
+    ai_name: str | None = Field(default=None, max_length=40)
 
 
 class SessionResponse(ORMModel):
@@ -19,6 +24,7 @@ class SessionResponse(ORMModel):
     class_id: int
     session_type: str
     title: str | None
+    ai_name: str | None
     created_at: datetime
     updated_at: datetime
 

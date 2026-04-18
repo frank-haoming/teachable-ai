@@ -127,10 +127,11 @@ class AIService:
         flat_knowledge: list[dict[str, Any]],
         summary: str | None,
         recent_messages: list[dict[str, str]],
+        ai_name: str | None = None,
     ) -> str:
         self.refresh_settings()
         if self._use_live_model:
-            messages = [{"role": "system", "content": build_teach_system_prompt(flat_knowledge)}]
+            messages = [{"role": "system", "content": build_teach_system_prompt(flat_knowledge, ai_name=ai_name)}]
             if summary:
                 messages.append({"role": "system", "content": f"历史摘要：{summary}"})
             messages.extend(recent_messages)

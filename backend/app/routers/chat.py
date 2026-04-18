@@ -6,13 +6,14 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
 from app.deps import require_student
-from app.models import ChatSession, ClassStudent, User
+from app.models import ChatMessage, ChatSession, ClassStudent, User
 from app.schemas.chat import (
     MessageItem,
     SendMessageRequest,
     SendMessageResponse,
     SessionCreateRequest,
     SessionResponse,
+    SessionUpdateRequest,
     StudentMCQRequest,
 )
 from app.services.chat_service import ChatService
@@ -49,7 +50,9 @@ async def create_session(
     if payload.session_type not in SESSION_TYPES:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Invalid session type.")
     await _student_has_class_access(db, payload.class_id, student.id)
-    session = await chat_service.create_session(db, student.id, payload.class_id, payload.session_type, payload.title)
+    session = await chat_service.create_session(
+        db, student.id, payload.class_id, payload.session_type, payload.title, payload.ai_name
+    )
     await db.commit()
     await db.refresh(session)
     return SessionResponse.model_validate(session)
@@ -75,6 +78,49 @@ async def get_messages(
     session = await _get_owned_session(db, session_id, student.id)
     messages = await chat_service.get_messages(db, session.id)
     return [MessageItem.model_validate(message) for message in messages]
+
+
+@router.patch("/sessions/{session_id}", response_model=SessionResponse)
+async def update_session(
+    session_id: int,
+    payload: SessionUpdateRequest,
+    db: AsyncSession = Depends(get_db),
+    student: User = Depends(require_student),
+) -> SessionResponse:
+    session = await _get_owned_session(db, session_id, student.id)
+    if payload.ai_name is not None:
+        session.ai_name = payload.ai_name
+    await db.commit()
+    await db.refresh(session)
+    return SessionResponse.model_validate(session)
+
+
+@router.post("/sessions/{session_id}/extract")
+async def manual_extract(
+    session_id: int,
+    db: AsyncSession = Depends(get_db),
+    student: User = Depends(require_student),
+) -> dict:
+    session = await _get_owned_session(db, session_id, student.id)
+    if session.session_type != "teach":
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Only teach sessions support extraction.")
+    result = await db.execute(
+        select(ChatMessage)
+        .where(ChatMessage.session_id == session_id)
+        .order_by(ChatMessage.created_at.desc())
+        .limit(10)
+    )
+    recent = list(reversed(result.scalars().all()))
+    combined_text = "\n".join(f"[{m.role}] {m.content}" for m in recent)
+    knowledge = await chat_service.knowledge_service.get_or_create_knowledge(db, session.student_id, session.class_id)
+    extracted = await chat_service.ai_service.extract_knowledge(combined_text)
+    changed = False
+    if extracted.get("has_knowledge"):
+        changed = await chat_service.knowledge_service.apply_extractions(
+            db, knowledge, extracted["items"], actor_user_id=student.id, source="manual_extract"
+        )
+    await db.commit()
+    return {"changed": changed, "knowledge_version": knowledge.version}
 
 
 @router.post("/send", response_model=SendMessageResponse)

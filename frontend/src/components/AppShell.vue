@@ -13,6 +13,23 @@
           <small>{{ item.caption }}</small>
         </router-link>
       </nav>
+      <div v-if="authStore.user?.role === 'student' && classId && teachSessions.length" class="session-history">
+        <div class="session-history__header">
+          <span>历史对话</span>
+          <router-link :to="{ name: 'student-teach', params: { classId } }" class="session-new-link">+ 新建</router-link>
+        </div>
+        <div class="session-history__list">
+          <router-link
+            v-for="s in teachSessions"
+            :key="s.id"
+            class="session-item"
+            :to="{ name: 'student-teach', params: { classId }, query: { session: s.id } }"
+          >
+            <span class="session-item__title">{{ s.title || '教学对话' }}</span>
+            <small class="session-item__date">{{ formatDate(s.created_at) }}</small>
+          </router-link>
+        </div>
+      </div>
       <div class="nav-footer">
         <router-link :to="{ name: 'profile' }" class="nav-footer__user">
           <strong>{{ authStore.user?.display_name || "未登录用户" }}</strong>
@@ -38,9 +55,10 @@
 </template>
 
 <script setup>
-import { computed } from "vue";
+import { computed, onMounted, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 
+import { listSessions } from "@/api/chat";
 import { useAuthStore } from "@/stores/auth";
 import BrandLockup from "./BrandLockup.vue";
 
@@ -49,6 +67,29 @@ const route = useRoute();
 const router = useRouter();
 
 const classId = computed(() => route.params.classId || null);
+
+const teachSessions = ref([]);
+const loadTeachSessions = async () => {
+  const cid = classId.value;
+  if (!cid || authStore.user?.role !== "student") {
+    teachSessions.value = [];
+    return;
+  }
+  try {
+    teachSessions.value = await listSessions({ class_id: Number(cid), session_type: "teach" });
+  } catch {
+    teachSessions.value = [];
+  }
+};
+onMounted(loadTeachSessions);
+watch(classId, loadTeachSessions);
+watch(() => route.query?.session, loadTeachSessions);
+
+const formatDate = (iso) => {
+  if (!iso) return "";
+  const d = new Date(iso);
+  return `${d.getMonth() + 1}/${d.getDate()}`;
+};
 
 const navItems = computed(() => {
   const cid = classId.value;
@@ -97,6 +138,7 @@ const logout = async () => {
   position: sticky;
   top: 20px;
   height: calc(100vh - 40px);
+  overflow-y: auto;
 }
 
 .nav-links {
@@ -126,6 +168,69 @@ const logout = async () => {
   border-color: rgba(13, 148, 136, 0.16);
   background: rgba(255, 255, 255, 0.96);
   box-shadow: 0 10px 24px rgba(9, 68, 62, 0.08);
+}
+
+.session-history {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.session-history__header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 4px 6px;
+  font-size: 0.78rem;
+  color: var(--aa-text-soft);
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.session-new-link {
+  color: var(--aa-primary);
+  font-size: 0.85rem;
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.session-history__list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-height: 240px;
+  overflow-y: auto;
+}
+
+.session-item {
+  display: flex;
+  flex-direction: column;
+  padding: 9px 12px;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.5);
+  border: 1px solid transparent;
+  color: var(--aa-text);
+  font-size: 0.87rem;
+  text-decoration: none;
+  transition: all 180ms ease;
+}
+
+.session-item.router-link-active {
+  border-color: rgba(13, 148, 136, 0.16);
+  background: rgba(255, 255, 255, 0.96);
+}
+
+.session-item__title {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.session-item__date {
+  color: var(--aa-text-soft);
+  font-size: 0.75rem;
+  margin-top: 2px;
 }
 
 .nav-footer {

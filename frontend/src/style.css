@@ -272,5 +272,54 @@ textarea:focus-visible,
   .app-content {
     padding: 20px 14px 32px;
   }
+
+  .page-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 12px;
+  }
+
+  .hero-actions,
+  .page-header > div:last-child {
+    width: 100%;
+    flex-wrap: wrap;
+  }
+
+  .split-layout {
+    gap: 16px;
+  }
+}
+
+/* Smooth custom scrollbars */
+.chat-log,
+.session-history__list,
+.app-nav {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(13, 148, 136, 0.2) transparent;
+}
+
+.chat-log::-webkit-scrollbar,
+.session-history__list::-webkit-scrollbar,
+.app-nav::-webkit-scrollbar {
+  width: 5px;
+}
+
+.chat-log::-webkit-scrollbar-track,
+.session-history__list::-webkit-scrollbar-track,
+.app-nav::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.chat-log::-webkit-scrollbar-thumb,
+.session-history__list::-webkit-scrollbar-thumb,
+.app-nav::-webkit-scrollbar-thumb {
+  background: rgba(13, 148, 136, 0.2);
+  border-radius: 999px;
+}
+
+.chat-log::-webkit-scrollbar-thumb:hover,
+.session-history__list::-webkit-scrollbar-thumb:hover,
+.app-nav::-webkit-scrollbar-thumb:hover {
+  background: rgba(13, 148, 136, 0.4);
 }
 
