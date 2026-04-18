@@ -19,9 +19,21 @@ uvicorn app.main:app --reload  # dev server on :8000
 
 **Tests:**
 ```bash
-pytest backend/tests/                   # all tests
-pytest backend/tests/test_auth_and_teach.py  # single file
+pytest backend/tests/                                           # all tests
+pytest backend/tests/test_auth_and_teach.py                    # single file
+pytest backend/tests/test_auth_and_teach.py::test_func_name    # single test
 ```
+
+Tests use SQLite in-memory (auto-schema) — no external DB needed. Async tests run via `pytest-asyncio` (configured in `backend/tests/conftest.py`).
+
+**Database migrations (production):**
+```bash
+cd backend
+alembic upgrade head              # apply all pending migrations
+alembic revision --autogenerate -m "description"  # generate new migration
+```
+
+In dev, `AUTO_CREATE_SCHEMA=true` in `.env` bypasses Alembic and lets SQLAlchemy create tables directly.
 
 ### Frontend (Vue 3 / Vite)
 ```bash
@@ -82,7 +94,7 @@ Each student has one `AIKnowledge` row per class (JSONB column). Topics: `subjec
 After `SESSION_SUMMARY_TRIGGER_TURNS` messages (default 20), `ChatService` calls `AIService.generate_summary()` and stores it in `SessionSummary`. Subsequent context windows use this summary + the last `SESSION_RECENT_MESSAGES` (default 6) messages.
 
 ### Async Test Runner
-`worker.py` polls the database every `TEST_WORKER_POLL_INTERVAL_SECONDS` (default 2 s) for pending `TestRun` jobs — no Redis or Celery required.
+`worker.py` polls the database every `TEST_WORKER_POLL_INTERVAL_SECONDS` (default 2 s) for pending `TestRun` jobs — no Redis or Celery required. Lifecycle: `claim_next_run` → `execute_run` → update status. Session types (defined in `utils/constants.py`): `teach`, `student_test_mcq`, `student_test_open`.
 
 ## Environment Variables (important ones)
 | Variable | Purpose |
@@ -90,8 +102,9 @@ After `SESSION_SUMMARY_TRIGGER_TURNS` messages (default 20), `ChatService` calls
 | `MOCK_AI_ENABLED` | `true` → stub AI responses, no API key needed |
 | `TEACHER_REG_CODE` | Required to register as a teacher |
 | `DATABASE_URL` | PostgreSQL (prod) or `sqlite+aiosqlite:///./dev.db` |
-| `AUTO_CREATE_SCHEMA` | `true` → SQLAlchemy creates tables on startup |
-| `DEEPSEEK_API_KEY` / `DEEPSEEK_MODEL` | LLM credentials |
+| `AUTO_CREATE_SCHEMA` | `true` → SQLAlchemy creates tables on startup (dev only; use Alembic in prod) |
+| `DEEPSEEK_API_KEY` / `DEEPSEEK_BASE_URL` / `DEEPSEEK_MODEL` | LLM credentials |
+| `JWT_SECRET_KEY` / `JWT_EXPIRE_MINUTES` | Auth token signing (default expiry: 1440 min) |
 
 ## Critical Files
 - `backend/app/prompts/` — changing prompts here directly affects AI behaviour

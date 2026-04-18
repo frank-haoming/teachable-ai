@@ -25,12 +25,14 @@ class ChatService:
         class_id: int,
         session_type: str,
         title: str | None = None,
+        ai_name: str | None = None,
     ) -> ChatSession:
         session = ChatSession(
             student_id=student_id,
             class_id=class_id,
             session_type=session_type,
             title=title,
+            ai_name=ai_name,
         )
         db.add(session)
         await db.flush()
@@ -76,6 +78,13 @@ class ChatService:
         knowledge = await self.knowledge_service.get_or_create_knowledge(db, session.student_id, session.class_id)
 
         if session.session_type == SESSION_TYPE_TEACH:
+            # Auto-title the session from first user message
+            if session.title in (None, "Teach Session", ""):
+                count_res = await db.execute(
+                    select(func.count()).select_from(ChatMessage).where(ChatMessage.session_id == session.id)
+                )
+                if (count_res.scalar() or 0) <= 1:
+                    session.title = content[:24] + ("…" if len(content) > 24 else "")
             extracted = await self.ai_service.extract_knowledge(content)
             user_message.knowledge_extracted = extracted if extracted.get("has_knowledge") else None
             if extracted.get("has_knowledge"):
@@ -89,7 +98,9 @@ class ChatService:
             flat = self.knowledge_service.flatten_knowledge(knowledge.knowledge_data)
             summary = await self._latest_summary(db, session.id)
             recent_messages = await self._recent_messages(db, session.id)
-            assistant_content = await self.ai_service.generate_teach_reply(flat, summary, recent_messages)
+            assistant_content = await self.ai_service.generate_teach_reply(
+                flat, summary, recent_messages, ai_name=session.ai_name
+            )
             knowledge_version = knowledge.version
         elif session.session_type == SESSION_TYPE_STUDENT_TEST_FREE:
             flat = self.knowledge_service.flatten_knowledge(knowledge.knowledge_data)

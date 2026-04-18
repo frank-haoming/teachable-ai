@@ -17,7 +17,6 @@
         <template #actions="{ item: knowledgeItem }">
           <el-button text @click="openEdit(knowledgeItem)">编辑</el-button>
           <el-button text type="warning" @click="sendToTeach(knowledgeItem)">对话修正</el-button>
-          <el-button text type="danger" @click="removeItem(knowledgeItem)">删除</el-button>
         </template>
       </KnowledgeCard>
     </section>
@@ -45,11 +44,11 @@
 
 <script setup>
 import { onMounted, ref } from "vue";
-import { ElMessage, ElMessageBox } from "element-plus";
+import { ElMessage } from "element-plus";
 import { useRouter } from "vue-router";
 
 import { fetchClassDetail } from "@/api/classes";
-import { deleteKnowledgeItem, fetchFlatKnowledge, updateKnowledgeItem } from "@/api/knowledge";
+import { fetchFlatKnowledge, updateKnowledgeItem } from "@/api/knowledge";
 import KnowledgeCard from "@/components/KnowledgeCard.vue";
 
 const props = defineProps({
@@ -92,19 +91,6 @@ const saveEdit = async () => {
     ElMessage.success("知识条目已更新。");
   } catch (error) {
     ElMessage.error(error.response?.data?.detail || "更新失败。");
-  }
-};
-
-const removeItem = async (item) => {
-  try {
-    await ElMessageBox.confirm("删除后会保留修改日志，但当前记忆会被移除。继续吗？", "删除知识");
-    await deleteKnowledgeItem(item.id, props.classId);
-    ElMessage.success("已删除知识条目。");
-    await load();
-  } catch (error) {
-    if (error !== "cancel") {
-      ElMessage.error(error.response?.data?.detail || "删除失败。");
-    }
   }
 };
 

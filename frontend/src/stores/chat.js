@@ -9,7 +9,7 @@ export const useChatStore = defineStore("chat", {
     loading: false,
   }),
   actions: {
-    async ensureSession({ classId, sessionType, title = null }) {
+    async ensureSession({ classId, sessionType, title = null, aiName = null }) {
       const existing = this.sessions.find(
         (session) => session.class_id === classId && session.session_type === sessionType,
       );
@@ -20,6 +20,7 @@ export const useChatStore = defineStore("chat", {
         class_id: classId,
         session_type: sessionType,
         title,
+        ai_name: aiName,
       });
       this.sessions.unshift(session);
       return session;

@@ -7,7 +7,6 @@
         <p class="page-subtitle">查看学生列表、邀请码与二维码，并快速跳转到单个学生的完整记录。</p>
       </div>
       <div class="hero-actions">
-        <el-button plain @click="qrVisible = true">显示二维码</el-button>
         <router-link :to="{ name: 'teacher-test-manage', params: { classId } }">
           <el-button type="primary">去出卷</el-button>
         </router-link>
@@ -47,15 +46,13 @@
       </el-table>
     </section>
 
-    <QrCodeModal v-model="qrVisible" :src="qrCodeUrl" />
   </div>
 </template>
 
 <script setup>
-import { computed, onMounted, ref } from "vue";
+import { onMounted, ref } from "vue";
 
-import { fetchClassDetail, getQrCodeUrl } from "@/api/classes";
-import QrCodeModal from "@/components/QrCodeModal.vue";
+import { fetchClassDetail } from "@/api/classes";
 
 const props = defineProps({
   classId: {
@@ -65,8 +62,6 @@ const props = defineProps({
 });
 
 const classInfo = ref(null);
-const qrVisible = ref(false);
-const qrCodeUrl = computed(() => getQrCodeUrl(props.classId));
 
 const load = async () => {
   classInfo.value = await fetchClassDetail(props.classId);
