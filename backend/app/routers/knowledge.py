@@ -6,10 +6,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
 from app.deps import require_student
-from app.models import AIKnowledge, ClassStudent, User
+from app.models import AIKnowledge, ClassStudent, KnowledgeChangeLog, User
 from app.schemas.knowledge import (
     DirectKnowledgeUpdateRequest,
     FlatKnowledgeItem,
+    KnowledgeChangeLogItem,
     KnowledgeCorrectionRequest,
     KnowledgeCorrectionResponse,
     KnowledgeResponse,
@@ -97,4 +98,21 @@ async def delete_knowledge_item(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
     await db.commit()
     return KnowledgeCorrectionResponse(action="delete", target_item_id=item_id, version=knowledge.version)
+
+
+@router.get("/{class_id}/changelog", response_model=list[KnowledgeChangeLogItem])
+async def get_knowledge_changelog(
+    class_id: int,
+    db: AsyncSession = Depends(get_db),
+    student: User = Depends(require_student),
+) -> list[KnowledgeChangeLogItem]:
+    """Return the 30 most recent knowledge change log entries for this student in this class."""
+    knowledge = await _get_student_knowledge(db, class_id, student.id)
+    result = await db.execute(
+        select(KnowledgeChangeLog)
+        .where(KnowledgeChangeLog.knowledge_id == knowledge.id)
+        .order_by(KnowledgeChangeLog.created_at.desc())
+        .limit(30)
+    )
+    return [KnowledgeChangeLogItem.model_validate(log) for log in result.scalars().all()]
 

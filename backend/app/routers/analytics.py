@@ -11,9 +11,23 @@ from app.deps import require_teacher
 from app.models import AIKnowledge, ChatMessage, ChatSession, ClassRoom, ClassStudent, KnowledgeChangeLog, TestPaper, TestResult, User
 from app.schemas.analytics import ClassOverviewResponse, StudentAnalyticsItem, StudentProgressResponse
 from app.services.knowledge_service import KnowledgeService
+from app.utils.constants import get_template_meta
 
 router = APIRouter(prefix="/analytics", tags=["analytics"])
 knowledge_service = KnowledgeService()
+
+SESSION_TYPE_LABELS = {
+    "teach": "Teach 对话",
+    "student_test_free": "自由问答自测",
+    "student_test_mcq": "选择题自测",
+}
+
+
+def _truncate_preview(content: str | None, limit: int = 90) -> str:
+    text = (content or "").strip()
+    if len(text) <= limit:
+        return text
+    return f"{text[: limit - 1]}…"
 
 
 async def _teacher_owns_class(db: AsyncSession, class_id: int, teacher_id: int) -> ClassRoom:
@@ -158,7 +172,7 @@ async def student_detail(
     db: AsyncSession = Depends(get_db),
     teacher: User = Depends(require_teacher),
 ) -> dict:
-    await _teacher_owns_class(db, class_id, teacher.id)
+    classroom = await _teacher_owns_class(db, class_id, teacher.id)
     student_result = await db.execute(select(User).where(User.id == student_id))
     student_user = student_result.scalar_one_or_none()
     knowledge_result = await db.execute(
@@ -185,15 +199,35 @@ async def student_detail(
             }
             for message in message_rows.scalars().all()
         ]
+    messages_by_session: dict[int, list[dict]] = defaultdict(list)
+    for message in messages:
+        messages_by_session[message["session_id"]].append(message)
+    class_scope = get_template_meta((knowledge.knowledge_data if knowledge else None) or classroom.knowledge_template)
     return {
         "student_id": student_id,
         "student_name": student_user.display_name if student_user else None,
+        "class_scope": class_scope,
         "knowledge": knowledge.knowledge_data if knowledge else None,
         "sessions": [
             {
                 "id": session.id,
                 "type": session.session_type,
+                "type_label": SESSION_TYPE_LABELS.get(session.session_type, session.session_type),
                 "title": session.title,
+                "ai_name": session.ai_name,
+                "message_count": len(messages_by_session.get(session.id, [])),
+                "preview": _truncate_preview(
+                    next(
+                        (
+                            message["content"]
+                            for message in reversed(messages_by_session.get(session.id, []))
+                            if message.get("role") == "user"
+                        ),
+                        (messages_by_session.get(session.id) or [{}])[-1].get("content"),
+                    )
+                ),
+                "last_message_at": (messages_by_session.get(session.id) or [{}])[-1].get("created_at"),
+                "last_role": (messages_by_session.get(session.id) or [{}])[-1].get("role"),
                 "updated_at": session.updated_at,
             }
             for session in sessions

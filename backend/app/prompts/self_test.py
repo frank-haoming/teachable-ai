@@ -1,7 +1,8 @@
 from __future__ import annotations
 
 
-def build_student_test_system_prompt(flat_knowledge: list[dict]) -> str:
+def build_student_test_system_prompt(flat_knowledge: list[dict], learning_scope: dict | None = None) -> str:
+    course_topic = (learning_scope or {}).get("course_topic") or "英语名词从句"
     knowledge_lines = []
     example_lines = []
     for item in flat_knowledge:
@@ -13,7 +14,7 @@ def build_student_test_system_prompt(flat_knowledge: list[dict]) -> str:
 
     knowledge_block = "\n".join(knowledge_lines) if knowledge_lines else "（暂无）"
     example_block = "\n".join(example_lines) if example_lines else "（暂无）"
-    return f"""你是一个正在接受学生自测的AI学生。
+    return f"""你是一个正在学习「{course_topic}」的学生，现在进入了自测区。
 这里是学生自测区，本轮对话不会写入长期记忆。
 你回答时可以同时参考两类信息：
 1. 你已经学到的知识。

@@ -293,33 +293,47 @@ textarea:focus-visible,
 /* Smooth custom scrollbars */
 .chat-log,
 .session-history__list,
-.app-nav {
+.app-nav,
+.knowledge-grid,
+.session-list,
+.items-list {
   scrollbar-width: thin;
   scrollbar-color: rgba(13, 148, 136, 0.2) transparent;
 }
 
 .chat-log::-webkit-scrollbar,
 .session-history__list::-webkit-scrollbar,
-.app-nav::-webkit-scrollbar {
+.app-nav::-webkit-scrollbar,
+.knowledge-grid::-webkit-scrollbar,
+.session-list::-webkit-scrollbar,
+.items-list::-webkit-scrollbar {
   width: 5px;
 }
 
 .chat-log::-webkit-scrollbar-track,
 .session-history__list::-webkit-scrollbar-track,
-.app-nav::-webkit-scrollbar-track {
+.app-nav::-webkit-scrollbar-track,
+.knowledge-grid::-webkit-scrollbar-track,
+.session-list::-webkit-scrollbar-track,
+.items-list::-webkit-scrollbar-track {
   background: transparent;
 }
 
 .chat-log::-webkit-scrollbar-thumb,
 .session-history__list::-webkit-scrollbar-thumb,
-.app-nav::-webkit-scrollbar-thumb {
+.app-nav::-webkit-scrollbar-thumb,
+.knowledge-grid::-webkit-scrollbar-thumb,
+.session-list::-webkit-scrollbar-thumb,
+.items-list::-webkit-scrollbar-thumb {
   background: rgba(13, 148, 136, 0.2);
   border-radius: 999px;
 }
 
 .chat-log::-webkit-scrollbar-thumb:hover,
 .session-history__list::-webkit-scrollbar-thumb:hover,
-.app-nav::-webkit-scrollbar-thumb:hover {
+.app-nav::-webkit-scrollbar-thumb:hover,
+.knowledge-grid::-webkit-scrollbar-thumb:hover,
+.session-list::-webkit-scrollbar-thumb:hover,
+.items-list::-webkit-scrollbar-thumb:hover {
   background: rgba(13, 148, 136, 0.4);
 }
-

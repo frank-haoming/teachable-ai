@@ -2,13 +2,13 @@
   <aside class="knowledge-panel glass-card">
     <div class="knowledge-panel__header">
       <div>
-        <span class="eyebrow">AI 当前记忆</span>
+        <span class="eyebrow">当前已学内容</span>
         <h3>Teach 区实时知识面板 <span v-if="items.length" class="data-chip count-badge">{{ items.length }}</span></h3>
       </div>
       <el-button text @click="$emit('refresh')">刷新</el-button>
     </div>
     <div v-if="!items.length" class="empty-state">
-      AI 还没有学到稳定的知识。先从定义、判断方法或例句开始教它。
+      这位学习伙伴还没有学到稳定的知识。先从定义、判断方法或例句开始教起。
     </div>
     <div v-else class="surface-stack items-list">
       <KnowledgeCard v-for="item in items" :key="item.id" :item="item">
@@ -64,4 +64,3 @@ defineEmits(["refresh", "correct"]);
   transition: max-height 300ms ease;
 }
 </style>
-

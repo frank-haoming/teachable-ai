@@ -11,3 +11,7 @@ frontend/node_modules/
 frontend/dist/
 frontend/.env
 deploy/.env.server
+# Requirements docs (sensitive planning docs)
+需求.md
+需求文档.md
+新的需求.md

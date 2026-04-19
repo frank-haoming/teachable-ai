@@ -64,22 +64,22 @@
       <!-- Feature cards -->
       <section class="page-shell soft-grid three-col feature-grid">
         <article class="section-card feature-card">
-          <div class="feature-icon">💬</div>
+          <div class="feature-icon" aria-hidden="true">教</div>
           <span class="eyebrow">01 · 教</span>
           <h3>对话式教学，知识自然沉淀</h3>
-          <p>学生用自然语言讲解概念、举例子、纠正 AI 的错误。AI 每轮都会追问，帮助学生完善理解。</p>
+          <p>学生用自然语言讲解概念、举例子、纠正学习伙伴的错误。它每轮都会追问，帮助学生完善理解。</p>
         </article>
         <article class="section-card feature-card">
-          <div class="feature-icon">🎯</div>
+          <div class="feature-icon" aria-hidden="true">测</div>
           <span class="eyebrow">02 · 测</span>
           <h3>自测与标准化测试双轨并行</h3>
-          <p>学生自由探索不影响 AI 记忆；教师批量下发题目，比较全班 AI 的回答与推理过程。</p>
+          <p>学生自由探索不影响长期记忆；教师批量下发题目，比较全班学习伙伴的回答与推理过程。</p>
         </article>
         <article class="section-card feature-card">
-          <div class="feature-icon">🔍</div>
+          <div class="feature-icon" aria-hidden="true">看</div>
           <span class="eyebrow">03 · 看</span>
           <h3>每一次纠正都留下可见痕迹</h3>
-          <p>教师看得到 AI 学到了什么、哪里被纠正、哪些知识点仍然薄弱——让教学决策有据可依。</p>
+          <p>教师看得到学习伙伴学到了什么、哪里被纠正、哪些知识点仍然薄弱，让教学决策有据可依。</p>
         </article>
       </section>
 
@@ -254,7 +254,16 @@ const subjects = ["英语语法", "数学推导", "物理定律", "编程概念"
 }
 
 .feature-icon {
-  font-size: 2rem;
+  width: 44px;
+  height: 44px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 14px;
+  background: rgba(13, 148, 136, 0.08);
+  color: var(--aa-primary-deep);
+  font-size: 1rem;
+  font-weight: 700;
   margin-bottom: 12px;
   line-height: 1;
 }

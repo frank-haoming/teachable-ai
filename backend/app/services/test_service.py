@@ -83,7 +83,12 @@ class TestService:
                         "C": question.option_c,
                         "D": question.option_d,
                     }
-                    answer = await self.ai_service.answer_question(flat, question.question_text, options=options)
+                    answer = await self.ai_service.answer_question(
+                        flat,
+                        question.question_text,
+                        options=options,
+                        learning_scope=knowledge.knowledge_data.get("meta") if knowledge and knowledge.knowledge_data else None,
+                    )
                     is_correct = answer["answer"] == question.correct_answer
                     if is_correct:
                         score += 1
@@ -120,4 +125,3 @@ class TestService:
             run.finished_at = datetime.now(timezone.utc)
             await db.flush()
             raise
-

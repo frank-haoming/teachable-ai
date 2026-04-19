@@ -3,17 +3,24 @@
     <header class="page-header">
       <div>
         <span class="eyebrow">学生首页</span>
-        <h2 class="page-title">选择一个班级，继续教你的 AI 学生。</h2>
-        <p class="page-subtitle">每个班级都会生成一份独立的 AI 记忆。Teach、自测和知识查看都围绕这份记忆展开。</p>
+        <h2 class="page-title">选择一个班级，继续教你的学习伙伴。</h2>
+        <p class="page-subtitle">每个班级都会生成一份独立的已学知识库。Teach、自测和知识查看都围绕这份知识库展开。</p>
       </div>
       <el-button type="primary" @click="joinDialog = true">输入邀请码加入新班级</el-button>
     </header>
 
     <section class="soft-grid three-col">
       <article v-for="item in classes" :key="item.id" class="section-card metric-card class-card">
-        <h3>{{ item.name }}</h3>
+        <div class="class-card__header">
+          <h3>{{ item.name }}</h3>
+          <span class="data-chip">{{ item.course_topic || "英语名词从句" }}</span>
+        </div>
+        <p class="class-card__summary">{{ item.subject_description }}</p>
+        <div class="class-card__chips">
+          <span v-for="label in item.covered_topic_labels || []" :key="label" class="data-chip">{{ label }}</span>
+        </div>
         <strong>{{ item.knowledge_item_count }}</strong>
-        <p class="muted">当前 AI 已学条目</p>
+        <p class="muted">当前已学条目</p>
         <div class="class-card__actions">
           <router-link :to="{ name: 'student-teach', params: { classId: item.id } }">
             <el-button type="primary">进入 Teach</el-button>
@@ -74,6 +81,26 @@ onMounted(loadClasses);
 </script>
 
 <style scoped>
+.class-card__header {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: center;
+}
+
+.class-card__summary {
+  margin: 10px 0 12px;
+  color: var(--aa-text-soft);
+  line-height: 1.6;
+}
+
+.class-card__chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
 .class-card__actions {
   display: flex;
   gap: 10px;
@@ -81,4 +108,3 @@ onMounted(loadClasses);
   margin-top: 18px;
 }
 </style>
-

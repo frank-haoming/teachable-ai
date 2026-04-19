@@ -4,7 +4,7 @@
       <div>
         <span class="eyebrow">教师首页</span>
         <h2 class="page-title">班级、测试和学习分析都从这里开始。</h2>
-        <p class="page-subtitle">教师可以创建班级、生成邀请码、统一出卷测试，并查看学生教出来的 AI 记忆。</p>
+        <p class="page-subtitle">教师可以创建班级、生成邀请码、统一出卷测试，并查看学生教出来的知识轨迹。Teach、自测和教师批测共用每个学生自己的同一份知识库。</p>
       </div>
       <el-button type="primary" @click="openCreate">创建新班级</el-button>
     </header>
@@ -13,8 +13,13 @@
       <article v-for="item in classes" :key="item.id" class="section-card metric-card">
         <div class="class-card__header">
           <h3>{{ item.name }}</h3>
-          <span v-if="item.subject_description" class="subject-badge">{{ item.subject_description }}</span>
+          <span class="subject-badge">{{ item.course_topic || defaultCourseTopic }}</span>
         </div>
+        <p class="class-card__summary">{{ item.subject_description }}</p>
+        <div class="class-card__chips">
+          <span v-for="label in item.covered_topic_labels || []" :key="label" class="data-chip">{{ label }}</span>
+        </div>
+        <p class="class-card__focuses">跟踪维度：{{ (item.knowledge_focuses || []).join(" / ") }}</p>
         <strong>{{ item.student_count || 0 }}</strong>
         <p class="muted">当前学生人数</p>
         <div class="class-card__actions">
@@ -40,34 +45,51 @@
           <el-input v-model.trim="className" placeholder="如：高一英语 3 班" maxlength="100" show-word-limit />
         </el-form-item>
 
-        <el-form-item>
-          <template #label>
-            <span>课程主题 <span class="muted">（可选，帮助 AI 理解学习范围）</span></span>
-          </template>
-          <div class="preset-chips">
-            <span
-              v-for="preset in subjectPresets"
-              :key="preset.value"
-              class="preset-chip"
-              :class="{ active: subjectDescription === preset.value }"
-              @click="togglePreset(preset.value)"
-            >{{ preset.label }}</span>
-          </div>
+        <el-form-item label="课程主题">
+          <el-input
+            v-model.trim="courseTopic"
+            placeholder="例如：英语名词从句总览 / 高一函数基础 / 平面向量专题"
+            maxlength="100"
+            show-word-limit
+          />
+        </el-form-item>
+
+        <el-form-item label="涵盖范围说明">
           <el-input
             v-model="subjectDescription"
             type="textarea"
-            :autosize="{ minRows: 2, maxRows: 4 }"
-            placeholder="例如：本课程讲授高中英语名词从句，包括主语从句、宾语从句、表语从句和同位语从句。"
+            :autosize="{ minRows: 3, maxRows: 5 }"
+            placeholder="例如：本班重点讲授名词从句的定义、结构、引导词、语法功能及典型例句，强调四类从句的辨析。"
             maxlength="300"
             show-word-limit
             class="subject-textarea"
           />
         </el-form-item>
+
+        <el-form-item label="涵盖专题">
+          <EditableTagField
+            v-model="coveredTopics"
+            placeholder="输入一个专题后回车，例如：主语从句 / 函数定义域 / 二次函数图像"
+            helper="这里定义这门课的知识结构分块。可以完全自定义，不限制学科。"
+          />
+        </el-form-item>
+
+        <el-form-item label="知识维度">
+          <EditableTagField
+            v-model="knowledgeFocuses"
+            :locked-values="['通用']"
+            placeholder="输入一个维度后回车，例如：定义 / 方法 / 易错点 / 证明思路"
+            helper="“通用”会始终保留；其他维度由教师自定义，供学生在 Teach 时聚焦。"
+          />
+        </el-form-item>
       </el-form>
 
-      <div v-if="subjectDescription" class="preview-hint">
+      <div class="preview-hint">
         <span class="eyebrow">预览提示</span>
-        <p>AI 学生将了解：「{{ subjectDescription }}」</p>
+        <p>课程主题：{{ courseTopic || defaultCourseTopic }}</p>
+        <p>涵盖专题：{{ selectedCoveredLabels.join("、") }}</p>
+        <p>跟踪维度：{{ resolvedKnowledgeFocuses.join("、") }}</p>
+        <p class="muted" style="margin-top: 8px">{{ subjectDescription || fallbackSubjectDescription }}</p>
       </div>
 
       <template #footer>
@@ -79,25 +101,34 @@
 </template>
 
 <script setup>
-import { onMounted, ref } from "vue";
+import { computed, onMounted, ref } from "vue";
 import { ElMessage } from "element-plus";
 
 import { createClass, fetchClasses } from "@/api/classes";
+import EditableTagField from "@/components/EditableTagField.vue";
+import {
+  DEFAULT_COURSE_TOPIC,
+  DEFAULT_COVERED_TOPICS,
+  DEFAULT_KNOWLEDGE_FOCUSES,
+  resolveCoveredTopics,
+  resolveKnowledgeFocuses,
+} from "@/constants/classScope";
 
 const classes = ref([]);
 const createDialog = ref(false);
 const className = ref("");
+const courseTopic = ref(DEFAULT_COURSE_TOPIC);
 const subjectDescription = ref("");
+const coveredTopics = ref([...DEFAULT_COVERED_TOPICS]);
+const knowledgeFocuses = ref([...DEFAULT_KNOWLEDGE_FOCUSES]);
+const defaultCourseTopic = DEFAULT_COURSE_TOPIC;
 
-const subjectPresets = [
-  { label: "英语语法", value: "本课程讲授英语语法知识，包括名词从句、定语从句、状语从句等重要语法结构。" },
-  { label: "数学", value: "本课程涵盖数学概念与定理，包括代数、几何、函数等核心知识点。" },
-  { label: "物理", value: "本课程讲授高中物理，涵盖力学、电磁学、热学等基础定律与公式。" },
-  { label: "编程", value: "本课程讲授编程基础，包括变量、条件、循环、函数与算法等核心概念。" },
-  { label: "历史", value: "本课程讲授历史知识，包括重要历史事件、人物、时间线与因果关系。" },
-  { label: "化学", value: "本课程讲授化学基础，涵盖元素、化学方程式、反应类型与化学计算。" },
-  { label: "通用", value: "本课程为通识学习，AI 学生将记录并整理学生教授的各类知识点。" },
-];
+const resolvedCoveredTopics = computed(() => resolveCoveredTopics(coveredTopics.value));
+const selectedCoveredLabels = computed(() => resolvedCoveredTopics.value);
+const resolvedKnowledgeFocuses = computed(() => resolveKnowledgeFocuses(knowledgeFocuses.value));
+const fallbackSubjectDescription = computed(
+  () => `本班围绕“${courseTopic.value || defaultCourseTopic}”展开，当前重点覆盖：${selectedCoveredLabels.value.join("、")}。`,
+);
 
 const openCreate = () => {
   createDialog.value = true;
@@ -106,10 +137,9 @@ const openCreate = () => {
 const resetForm = () => {
   className.value = "";
   subjectDescription.value = "";
-};
-
-const togglePreset = (value) => {
-  subjectDescription.value = subjectDescription.value === value ? "" : value;
+  courseTopic.value = defaultCourseTopic;
+  coveredTopics.value = [...DEFAULT_COVERED_TOPICS];
+  knowledgeFocuses.value = [...DEFAULT_KNOWLEDGE_FOCUSES];
 };
 
 const loadClasses = async () => {
@@ -121,7 +151,10 @@ const submitCreate = async () => {
   try {
     await createClass({
       name: className.value,
+      course_topic: courseTopic.value || defaultCourseTopic,
       subject_description: subjectDescription.value || null,
+      covered_topics: resolvedCoveredTopics.value,
+      knowledge_focuses: resolvedKnowledgeFocuses.value,
     });
     ElMessage.success("班级已创建。");
     createDialog.value = false;
@@ -137,8 +170,9 @@ onMounted(loadClasses);
 <style scoped>
 .class-card__header {
   display: flex;
-  flex-direction: column;
-  gap: 6px;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: center;
   margin-bottom: 8px;
 }
 
@@ -157,44 +191,30 @@ onMounted(loadClasses);
   white-space: nowrap;
 }
 
+.class-card__summary {
+  margin: 0 0 12px;
+  color: var(--aa-text-soft);
+  line-height: 1.6;
+}
+
+.class-card__chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.class-card__focuses {
+  margin: 0 0 14px;
+  color: var(--aa-text-soft);
+  font-size: 0.9rem;
+}
+
 .class-card__actions {
   display: flex;
   gap: 10px;
   flex-wrap: wrap;
   margin-top: 18px;
-}
-
-/* Preset chips */
-.preset-chips {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  margin-bottom: 12px;
-}
-
-.preset-chip {
-  padding: 5px 14px;
-  border-radius: 999px;
-  border: 1px solid var(--aa-border);
-  background: rgba(255, 255, 255, 0.9);
-  font-size: 0.85rem;
-  color: var(--aa-text-soft);
-  cursor: pointer;
-  transition: all 150ms ease;
-  user-select: none;
-}
-
-.preset-chip:hover {
-  border-color: var(--aa-primary);
-  color: var(--aa-primary-deep);
-  background: rgba(13, 148, 136, 0.06);
-}
-
-.preset-chip.active {
-  border-color: var(--aa-primary);
-  background: rgba(13, 148, 136, 0.12);
-  color: var(--aa-primary-deep);
-  font-weight: 500;
 }
 
 .subject-textarea {
@@ -216,7 +236,7 @@ onMounted(loadClasses);
 }
 
 .preview-hint p {
-  margin: 0;
+  margin: 0 0 6px;
   font-size: 0.88rem;
   color: var(--aa-text-soft);
   line-height: 1.6;

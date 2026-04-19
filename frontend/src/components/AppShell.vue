@@ -13,10 +13,17 @@
           <small>{{ item.caption }}</small>
         </router-link>
       </nav>
-      <div v-if="authStore.user?.role === 'student' && classId && teachSessions.length" class="session-history">
+      <div v-if="authStore.user?.role === 'student' && classId" class="session-history">
         <div class="session-history__header">
           <span>历史对话</span>
-          <router-link :to="{ name: 'student-teach', params: { classId } }" class="session-new-link">+ 新建</router-link>
+          <button
+            type="button"
+            class="session-new-link"
+            :disabled="creatingSession"
+            @click="createTeachSession"
+          >
+            {{ creatingSession ? "创建中…" : "+ 新建" }}
+          </button>
         </div>
         <div class="session-history__list">
           <router-link
@@ -28,6 +35,9 @@
             <span class="session-item__title">{{ s.title || '教学对话' }}</span>
             <small class="session-item__date">{{ formatDate(s.created_at) }}</small>
           </router-link>
+          <div v-if="!teachSessions.length" class="session-history__empty">
+            还没有 Teach 记录。点右上角“新建”开始第一段教学对话。
+          </div>
         </div>
       </div>
       <div class="nav-footer">
@@ -56,15 +66,18 @@
 
 <script setup>
 import { computed, onMounted, ref, watch } from "vue";
+import { ElMessage } from "element-plus";
 import { useRoute, useRouter } from "vue-router";
 
-import { listSessions } from "@/api/chat";
+import { createSession, listSessions } from "@/api/chat";
 import { useAuthStore } from "@/stores/auth";
 import BrandLockup from "./BrandLockup.vue";
 
 const authStore = useAuthStore();
 const route = useRoute();
 const router = useRouter();
+const creatingSession = ref(false);
+const aiNameKey = (cid) => `ai_name_${cid}`;
 
 const classId = computed(() => route.params.classId || null);
 
@@ -84,6 +97,26 @@ const loadTeachSessions = async () => {
 onMounted(loadTeachSessions);
 watch(classId, loadTeachSessions);
 watch(() => route.query?.session, loadTeachSessions);
+
+const createTeachSession = async () => {
+  const cid = Number(classId.value);
+  if (!cid || creatingSession.value) return;
+  creatingSession.value = true;
+  try {
+    const session = await createSession({
+      class_id: cid,
+      session_type: "teach",
+      title: "Teach Session",
+      ai_name: localStorage.getItem(aiNameKey(cid)) || null,
+    });
+    teachSessions.value = [session, ...teachSessions.value.filter((item) => item.id !== session.id)];
+    await router.push({ name: "student-teach", params: { classId: cid }, query: { session: session.id } });
+  } catch (error) {
+    ElMessage.error(error.response?.data?.detail || "新建对话失败。");
+  } finally {
+    creatingSession.value = false;
+  }
+};
 
 const formatDate = (iso) => {
   if (!iso) return "";
@@ -108,8 +141,8 @@ const navItems = computed(() => {
   const base = [{ to: { name: "student-dashboard" }, label: "我的班级", caption: "班级列表" }];
   if (cid) {
     base.push(
-      { to: { name: "student-teach", params: { classId: cid } }, label: "Teach 区", caption: "教 AI 学语法" },
-      { to: { name: "student-knowledge", params: { classId: cid } }, label: "知识库", caption: "查看 AI 记忆" },
+      { to: { name: "student-teach", params: { classId: cid } }, label: "Teach 区", caption: "教学习伙伴学语法" },
+      { to: { name: "student-knowledge", params: { classId: cid } }, label: "知识库", caption: "查看已学内容" },
       { to: { name: "student-self-test", params: { classId: cid } }, label: "自测", caption: "不写入记忆的测试" },
     );
   }
@@ -192,7 +225,14 @@ const logout = async () => {
   color: var(--aa-primary);
   font-size: 0.85rem;
   font-weight: 600;
-  text-decoration: none;
+  border: 0;
+  background: transparent;
+  padding: 0;
+}
+
+.session-new-link[disabled] {
+  opacity: 0.6;
+  cursor: default;
 }
 
 .session-history__list {
@@ -231,6 +271,15 @@ const logout = async () => {
   color: var(--aa-text-soft);
   font-size: 0.75rem;
   margin-top: 2px;
+}
+
+.session-history__empty {
+  padding: 14px 12px;
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.56);
+  color: var(--aa-text-soft);
+  font-size: 0.85rem;
+  line-height: 1.6;
 }
 
 .nav-footer {
@@ -295,4 +344,3 @@ const logout = async () => {
   }
 }
 </style>
-

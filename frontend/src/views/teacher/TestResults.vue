@@ -4,7 +4,7 @@
       <div>
         <span class="eyebrow">测试结果</span>
         <h2 class="page-title">{{ classInfo?.name || "结果页" }}</h2>
-        <p class="page-subtitle">查看全班 AI 的分数、每题作答和后台任务进度。</p>
+        <p class="page-subtitle">查看全班学习伙伴的分数、每题作答和后台任务进度。</p>
       </div>
       <router-link :to="{ name: 'teacher-test-manage', params: { classId } }">
         <el-button plain>返回试卷管理</el-button>
@@ -43,7 +43,7 @@
                   </span>
                   <span class="muted">Q{{ item.question_id }}</span>
                 </div>
-                <p><strong>AI 选择：{{ item.ai_answer }}</strong>　正确答案：{{ item.correct_answer }}</p>
+                <p><strong>作答选择：{{ item.ai_answer }}</strong>　正确答案：{{ item.correct_answer }}</p>
                 <p class="muted result-reasoning">{{ item.reasoning }}</p>
               </div>
             </div>

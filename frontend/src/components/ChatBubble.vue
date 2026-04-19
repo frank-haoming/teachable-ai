@@ -1,7 +1,7 @@
 <template>
   <article class="chat-bubble" :class="message.role">
     <header>
-      <strong>{{ message.role === "assistant" ? (aiName || "AI 同学") : "你" }}</strong>
+      <strong>{{ message.role === "assistant" ? (assistantLabel || aiName || "学习伙伴") : userLabel }}</strong>
       <time>{{ formatTime(message.created_at) }}</time>
     </header>
     <p>{{ message.content }}</p>
@@ -17,6 +17,14 @@ const props = defineProps({
   aiName: {
     type: String,
     default: "",
+  },
+  assistantLabel: {
+    type: String,
+    default: "",
+  },
+  userLabel: {
+    type: String,
+    default: "你",
   },
 });
 
@@ -74,4 +82,3 @@ const formatTime = (value) => {
   overflow-wrap: anywhere;
 }
 </style>
-

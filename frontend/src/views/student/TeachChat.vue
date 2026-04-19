@@ -6,7 +6,7 @@
         <h2 class="page-title">{{ classInfo?.name || "教学对话" }}</h2>
         <p class="page-subtitle">
           这里的每条学生消息都会触发知识提取。Teach 区以外的测试不会写入记忆。
-          <span v-if="aiName" class="ai-name-badge">正在教：{{ aiName }}</span>
+          <span v-if="aiName" class="ai-name-badge">当前对象：{{ aiName }}</span>
         </p>
       </div>
       <div style="display:flex;gap:10px;flex-wrap:wrap">
@@ -21,41 +21,48 @@
     <div class="split-layout">
       <section class="section-card chat-panel">
         <div ref="chatLogRef" class="chat-log">
-          <template v-if="messages.length">
-            <ChatBubble
-              v-for="message in messages"
-              :key="message.id"
-              :message="message"
-              :ai-name="aiName"
-            />
-          </template>
-          <div v-else class="empty-state">先告诉 {{ aiName || 'AI' }} 一条规则、一个例句，或者你认为最容易混淆的点。</div>
-        </div>
-        <div class="focus-chips">
-          <span
-            v-for="topic in focusTopics"
-            :key="topic"
-            class="focus-chip"
-            :class="{ 'focus-chip--active': activeFocus === topic }"
-            @click="toggleFocus(topic)"
-          >{{ topic }}</span>
-        </div>
-        <el-form class="chat-form" @submit.prevent="submitMessage">
-          <el-form-item label="教学输入">
-            <el-input
-              v-model="draft"
-              type="textarea"
-              :autosize="{ minRows: 4, maxRows: 7 }"
-              :placeholder="`例如：宾语从句常作动词的宾语；I think that he is honest. 这里 that 可以省略。Ctrl+Enter 发送`"
-              @keydown.ctrl.enter.prevent="submitMessage"
-            />
-          </el-form-item>
-          <div class="chat-actions">
-            <el-button plain @click="draft = correctionSeed">填入纠正提示</el-button>
-            <el-button plain :loading="extracting" :disabled="chatStore.loading" @click="saveMemory">保存记忆</el-button>
-            <el-button type="primary" :loading="chatStore.loading" native-type="submit">发送并教学</el-button>
+          <div class="chat-log__stack">
+            <template v-if="messages.length">
+              <ChatBubble
+                v-for="message in messages"
+                :key="message.id"
+                :message="message"
+                :ai-name="aiName"
+              />
+            </template>
+            <div v-else class="empty-state">先告诉 {{ aiName || "这位同学" }} 一条规则、一个例句，或者你认为最容易混淆的点。</div>
           </div>
-        </el-form>
+        </div>
+        <div class="composer-shell">
+          <div class="focus-chips">
+            <span class="scope-label">本轮聚焦</span>
+            <button
+              v-for="topic in focusTopics"
+              :key="topic"
+              type="button"
+              class="focus-chip"
+              :class="{ 'focus-chip--active': activeFocus === topic }"
+              @click="toggleFocus(topic)"
+            >{{ topic }}</button>
+          </div>
+          <p class="focus-caption">当前讨论聚焦于：<strong>{{ activeFocus }}</strong>。</p>
+          <el-form class="chat-form" @submit.prevent="submitMessage">
+            <el-form-item label="教学输入">
+              <el-input
+                v-model="draft"
+                type="textarea"
+                :autosize="{ minRows: 4, maxRows: 7 }"
+                :placeholder="inputPlaceholder"
+                @keydown.ctrl.enter.prevent="submitMessage"
+              />
+            </el-form-item>
+            <div class="chat-actions">
+              <el-button plain @click="draft = correctionSeed">填入纠正提示</el-button>
+              <el-button plain :loading="extracting" :disabled="chatStore.loading" @click="saveMemory">保存记忆</el-button>
+              <el-button type="primary" :loading="chatStore.loading" native-type="submit">发送并教学</el-button>
+            </div>
+          </el-form>
+        </div>
       </section>
 
       <KnowledgePanel :items="knowledgeItems" @refresh="loadKnowledge" @correct="seedCorrection" />
@@ -63,7 +70,7 @@
 
     <!-- AI Naming Dialog -->
     <el-dialog v-model="nameDialog" title="给你的 AI 起名" width="380px">
-      <p class="muted" style="margin-bottom: 16px">为这个班级的 AI 同学起一个专属名字吧（如"小明"），系统会自动加上"同学"。</p>
+      <p class="muted" style="margin-bottom: 16px">为这个班级里的学习伙伴起一个专属名字吧（如"小明"），系统会自动加上"同学"。</p>
       <el-input v-model.trim="aiNameInput" placeholder="输入名字，如：小明" maxlength="10" show-word-limit />
       <template #footer>
         <el-button @click="nameDialog = false">取消</el-button>
@@ -79,10 +86,12 @@ import { ElMessage, ElMessageBox, ElNotification } from "element-plus";
 import { useRoute, useRouter } from "vue-router";
 
 import { fetchClassDetail } from "@/api/classes";
-import { manualExtract, updateSession } from "@/api/chat";
+import { manualExtract, renameClassAi } from "@/api/chat";
 import { fetchFlatKnowledge } from "@/api/knowledge";
 import ChatBubble from "@/components/ChatBubble.vue";
 import KnowledgePanel from "@/components/KnowledgePanel.vue";
+import { DEFAULT_KNOWLEDGE_FOCUSES, resolveKnowledgeFocuses } from "@/constants/classScope";
+import { useAuthStore } from "@/stores/auth";
 import { useChatStore } from "@/stores/chat";
 
 const props = defineProps({
@@ -92,8 +101,11 @@ const props = defineProps({
   },
 });
 
-const AI_NAME_KEY = (cid) => `ai_name_${cid}`;
+// Keys are scoped by both userId and classId so students on the same device don't bleed into each other
+const AI_NAME_KEY = (uid, cid) => `ai_name_${uid}_${cid}`;
+const TEACH_FOCUS_KEY = (uid, cid) => `teach_focus_${uid}_${cid}`;
 
+const authStore = useAuthStore();
 const chatStore = useChatStore();
 const route = useRoute();
 const router = useRouter();
@@ -105,22 +117,39 @@ const correctionSeed = ref("我发现你有一条知识需要修正：");
 const chatLogRef = ref(null);
 const nameDialog = ref(false);
 const aiNameInput = ref("");
-const aiName = ref(localStorage.getItem(AI_NAME_KEY(props.classId)) || "");
-
-const focusTopics = ["定义", "基本结构", "常见引导词", "语法功能", "例子"];
-const activeFocus = ref(null);
+const aiName = ref(localStorage.getItem(AI_NAME_KEY(authStore.user?.id, props.classId)) || "");
+const activeFocus = ref("通用");
 const extracting = ref(false);
 
-const toggleFocus = (topic) => {
-  activeFocus.value = activeFocus.value === topic ? null : topic;
-};
+const focusTopics = computed(() =>
+  resolveKnowledgeFocuses(classInfo.value?.knowledge_focuses?.length ? classInfo.value.knowledge_focuses : DEFAULT_KNOWLEDGE_FOCUSES),
+);
 
 const messages = computed(() => chatStore.messagesBySession[session.value?.id] || []);
+const inputPlaceholder = computed(() => {
+  const focusHint = activeFocus.value && activeFocus.value !== "通用" ? `围绕“${activeFocus.value}”来教，` : "";
+  return `例如：${focusHint}宾语从句常作动词的宾语；I think that he is honest. 这里 that 可以省略。Ctrl+Enter 发送`;
+});
+
+const syncFocusSelection = () => {
+  // Only restore from localStorage if the saved value is still in the current topic list.
+  // If it's not (e.g. teacher changed the focuses), fall back silently without overwriting storage.
+  const saved = localStorage.getItem(TEACH_FOCUS_KEY(authStore.user?.id, props.classId)) || "通用";
+  activeFocus.value = focusTopics.value.includes(saved) ? saved : (focusTopics.value[0] || "通用");
+};
+
+const toggleFocus = (topic) => {
+  activeFocus.value = topic;
+  localStorage.setItem(TEACH_FOCUS_KEY(authStore.user?.id, props.classId), topic);
+};
 
 const scrollToBottom = async () => {
   await nextTick();
   if (chatLogRef.value) {
-    chatLogRef.value.lastElementChild?.scrollIntoView({ behavior: "smooth" });
+    chatLogRef.value.scrollTo({
+      top: chatLogRef.value.scrollHeight,
+      behavior: "smooth",
+    });
   }
 };
 
@@ -137,6 +166,7 @@ const hydrateCorrectionFromRoute = () => {
 
 const bootstrap = async () => {
   classInfo.value = await fetchClassDetail(props.classId);
+  syncFocusSelection();
   await chatStore.loadSessions({ class_id: Number(props.classId), session_type: "teach" });
 
   const sessionIdFromQuery = route.query.session ? Number(route.query.session) : null;
@@ -169,16 +199,15 @@ const saveAiName = async () => {
   if (!raw) return;
   const full = `${raw}同学`;
   aiName.value = full;
-  localStorage.setItem(AI_NAME_KEY(props.classId), full);
+  localStorage.setItem(AI_NAME_KEY(authStore.user?.id, props.classId), full);
   nameDialog.value = false;
-  if (session.value?.id) {
-    try {
-      await updateSession(session.value.id, { ai_name: full });
-    } catch {
-      // non-critical: name is still stored in localStorage
-    }
+  // Bulk-rename all teach sessions for this class so future sessions use the same name
+  try {
+    await renameClassAi(Number(props.classId), full);
+  } catch {
+    // non-critical: name is still stored in localStorage
   }
-  ElMessage.success(`已将 AI 命名为"${full}"。`);
+  ElMessage.success(`已将学习伙伴命名为"${full}"。`);
 };
 
 const confirmNewSession = async () => {
@@ -198,7 +227,7 @@ const confirmNewSession = async () => {
     chatStore.sessions.unshift(newSession);
     session.value = newSession;
     chatStore.messagesBySession[newSession.id] = [];
-    await router.replace({ ...route, query: { ...route.query, session: newSession.id } });
+    await router.replace({ name: route.name, params: route.params, query: { session: newSession.id } });
   } catch {
     // cancelled
   }
@@ -207,20 +236,18 @@ const confirmNewSession = async () => {
 const submitMessage = async () => {
   if (!draft.value.trim() || chatStore.loading) return;
   try {
-    const content = activeFocus.value
-      ? `[聚焦：${activeFocus.value}] ${draft.value}`
-      : draft.value;
+    const focus = activeFocus.value && activeFocus.value !== "通用" ? activeFocus.value : null;
     const result = await chatStore.pushMessage({
       session_id: session.value.id,
-      content,
+      content: draft.value,
+      focus,
     });
     draft.value = "";
-    activeFocus.value = null;
     await loadKnowledge();
     await scrollToBottom();
     if (result?.knowledge_changed) {
       ElNotification({
-        title: `${aiName.value || "AI"} 记住了新知识`,
+        title: `${aiName.value || "这位同学"} 记住了新知识`,
         message: `知识库已更新 · 版本 ${result.knowledge_version}`,
         type: "success",
         duration: 2500,
@@ -255,6 +282,11 @@ const saveMemory = async () => {
 onMounted(bootstrap);
 
 watch(
+  focusTopics,
+  () => syncFocusSelection(),
+);
+
+watch(
   () => route.query.seed,
   () => hydrateCorrectionFromRoute(),
 );
@@ -264,7 +296,11 @@ watch(
   async (newId) => {
     if (!newId) return;
     const id = Number(newId);
-    const found = chatStore.sessions.find((s) => s.id === id);
+    let found = chatStore.sessions.find((s) => s.id === id);
+    if (!found) {
+      await chatStore.loadSessions({ class_id: Number(props.classId), session_type: "teach" });
+      found = chatStore.sessions.find((s) => s.id === id);
+    }
     if (found && found.id !== session.value?.id) {
       session.value = found;
       await chatStore.loadMessages(id);
@@ -275,25 +311,48 @@ watch(
 </script>
 
 <style scoped>
+.scope-label {
+  font-size: 0.82rem;
+  font-weight: 700;
+  color: var(--aa-text-soft);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
 .chat-panel {
-  display: grid;
-  grid-template-rows: 1fr auto;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
   min-height: 72vh;
   padding: 20px;
 }
 
 .chat-log {
   display: flex;
+  flex: 1;
+  min-height: 280px;
+  max-height: calc(72vh - 210px);
+  overflow-y: auto;
+  padding-right: 6px;
+}
+
+.chat-log__stack {
+  display: flex;
   flex-direction: column;
   gap: 14px;
-  padding-bottom: 16px;
-  max-height: calc(72vh - 160px);
-  overflow-y: auto;
+  width: 100%;
+  margin-top: auto;
+}
+
+.composer-shell {
+  padding: 16px 18px 18px;
+  border-radius: 22px;
+  border: 1px solid rgba(13, 148, 136, 0.12);
+  background: linear-gradient(180deg, rgba(244, 251, 249, 0.96) 0%, rgba(255, 255, 255, 0.96) 100%);
 }
 
 .chat-form {
-  border-top: 1px solid rgba(13, 148, 136, 0.1);
-  padding-top: 16px;
+  padding-top: 8px;
 }
 
 .chat-actions {
@@ -307,19 +366,17 @@ watch(
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
-  padding: 10px 0 4px;
-  border-top: 1px solid rgba(13, 148, 136, 0.08);
+  align-items: center;
 }
 
 .focus-chip {
+  appearance: none;
   padding: 5px 14px;
   border-radius: 999px;
   border: 1px solid rgba(13, 148, 136, 0.2);
-  background: rgba(255, 255, 255, 0.7);
+  background: rgba(255, 255, 255, 0.9);
   color: var(--aa-text-soft);
   font-size: 0.88rem;
-  cursor: pointer;
-  user-select: none;
   transition: all 180ms ease;
 }
 
@@ -328,6 +385,13 @@ watch(
   border-color: var(--aa-primary);
   color: var(--aa-primary-deep);
   font-weight: 600;
+}
+
+.focus-caption {
+  margin: 8px 0 2px;
+  color: var(--aa-text-soft);
+  font-size: 0.88rem;
+  line-height: 1.6;
 }
 
 .ai-name-badge {

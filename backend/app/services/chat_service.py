@@ -66,9 +66,13 @@ class ChatService:
         session: ChatSession,
         user_id: int,
         content: str,
+        focus: str | None = None,
     ) -> tuple[ChatMessage, ChatMessage, bool, dict | None, int | None]:
         self.settings = get_settings()
-        user_message = ChatMessage(session_id=session.id, role="user", content=content, meta={"mode": session.session_type})
+        user_meta: dict = {"mode": session.session_type}
+        if focus:
+            user_meta["focus"] = focus
+        user_message = ChatMessage(session_id=session.id, role="user", content=content, meta=user_meta)
         db.add(user_message)
         await db.flush()
 
@@ -76,6 +80,7 @@ class ChatService:
         extracted = None
         knowledge_version = None
         knowledge = await self.knowledge_service.get_or_create_knowledge(db, session.student_id, session.class_id)
+        learning_scope = knowledge.knowledge_data.get("meta") if knowledge.knowledge_data else None
 
         if session.session_type == SESSION_TYPE_TEACH:
             # Auto-title the session from first user message
@@ -85,7 +90,7 @@ class ChatService:
                 )
                 if (count_res.scalar() or 0) <= 1:
                     session.title = content[:24] + ("…" if len(content) > 24 else "")
-            extracted = await self.ai_service.extract_knowledge(content)
+            extracted = await self.ai_service.extract_knowledge(content, learning_scope=learning_scope)
             user_message.knowledge_extracted = extracted if extracted.get("has_knowledge") else None
             if extracted.get("has_knowledge"):
                 knowledge_changed = await self.knowledge_service.apply_extractions(
@@ -99,7 +104,12 @@ class ChatService:
             summary = await self._latest_summary(db, session.id)
             recent_messages = await self._recent_messages(db, session.id)
             assistant_content = await self.ai_service.generate_teach_reply(
-                flat, summary, recent_messages, ai_name=session.ai_name
+                flat,
+                summary,
+                recent_messages,
+                ai_name=session.ai_name,
+                learning_scope=learning_scope,
+                focus=focus,
             )
             knowledge_version = knowledge.version
         elif session.session_type == SESSION_TYPE_STUDENT_TEST_FREE:
@@ -110,6 +120,7 @@ class ChatService:
                 content,
                 conversational=True,
                 history=recent_messages,
+                learning_scope=learning_scope,
             )
             assistant_content = answer["content"]
             knowledge_version = knowledge.version
@@ -143,7 +154,12 @@ class ChatService:
             raise ValueError("This session does not accept MCQ answers.")
         knowledge = await self.knowledge_service.get_or_create_knowledge(db, session.student_id, session.class_id)
         flat = self.knowledge_service.flatten_knowledge(knowledge.knowledge_data)
-        answer = await self.ai_service.answer_question(flat, question_text, options=options)
+        answer = await self.ai_service.answer_question(
+            flat,
+            question_text,
+            options=options,
+            learning_scope=knowledge.knowledge_data.get("meta") if knowledge.knowledge_data else None,
+        )
         user_payload = {
             "question_text": question_text,
             "options": options,

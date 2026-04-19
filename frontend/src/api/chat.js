@@ -7,4 +7,5 @@ export const sendMessage = async (payload) => (await api.post("/chat/send", payl
 export const answerStudentMcq = async (payload) => (await api.post("/chat/student-test/mcq", payload)).data;
 export const updateSession = async (sessionId, payload) => (await api.patch(`/chat/sessions/${sessionId}`, payload)).data;
 export const manualExtract = async (sessionId) => (await api.post(`/chat/sessions/${sessionId}/extract`)).data;
+export const renameClassAi = async (classId, aiName) => (await api.post(`/chat/classes/${classId}/rename-ai`, { ai_name: aiName })).data;
 

@@ -4,7 +4,7 @@
       <div>
         <span class="eyebrow">试卷管理</span>
         <h2 class="page-title">{{ classInfo?.name || "试卷管理" }}</h2>
-        <p class="page-subtitle">为全班 AI 统一创建选择题并发起后台异步测试。</p>
+        <p class="page-subtitle">为全班学习伙伴统一创建选择题并发起后台异步测试。这里调用的也是每个学生当前那一份 Teach 形成的知识库。</p>
       </div>
       <el-button type="primary" @click="paperDialog = true">创建试卷</el-button>
     </header>
@@ -179,4 +179,3 @@ const runPaper = async (paper) => {
 
 onMounted(load);
 </script>
-

@@ -10,7 +10,7 @@ from sqlalchemy.orm.attributes import flag_modified
 
 from app.models import AIKnowledge, ClassRoom, KnowledgeChangeLog
 from app.services.ai_service import AIService
-from app.utils.constants import TOPIC_META, clone_knowledge_template
+from app.utils.constants import clone_knowledge_template, get_template_meta, normalize_topic_label
 
 
 def _now_iso() -> str:
@@ -52,12 +52,13 @@ class KnowledgeService:
         flattened: list[dict] = []
         topics = knowledge_data.get("topics", {})
         for topic, payload in topics.items():
+            topic_name = normalize_topic_label(payload.get("name") or topic)
             for item in payload.get("knowledge", []):
                 flattened.append(
                     {
                         "id": item["id"],
                         "topic": topic,
-                        "topic_name": TOPIC_META.get(topic, topic),
+                        "topic_name": topic_name,
                         "item_type": "knowledge",
                         "content": item.get("content"),
                         "created_at": item.get("created_at"),
@@ -69,7 +70,7 @@ class KnowledgeService:
                     {
                         "id": item["id"],
                         "topic": topic,
-                        "topic_name": TOPIC_META.get(topic, topic),
+                        "topic_name": topic_name,
                         "item_type": "example",
                         "sentence": item.get("sentence"),
                         "explanation": item.get("explanation"),
@@ -83,6 +84,98 @@ class KnowledgeService:
     def count_items(self, knowledge_data: dict) -> int:
         return len(self.flatten_knowledge(knowledge_data))
 
+    def resolve_topic_key(self, topics: dict, requested_topic: str | None) -> str:
+        if not topics:
+            return normalize_topic_label(requested_topic) or "通用"
+        candidate = normalize_topic_label(requested_topic)
+        if candidate and candidate in topics:
+            return candidate
+        for key, payload in topics.items():
+            if normalize_topic_label(payload.get("name") or key) == candidate:
+                return key
+        if candidate:
+            lowered = candidate.lower()
+            for key, payload in topics.items():
+                label = normalize_topic_label(payload.get("name") or key)
+                if lowered in label.lower() or label.lower() in lowered:
+                    return key
+        if "通用" in topics:
+            return "通用"
+        return next(iter(topics))
+
+    def sync_topic_structure(self, knowledge_data: dict, covered_labels: list[str]) -> dict:
+        """Pure function: restructure topic buckets to match covered_labels.
+        Orphan items (from removed topics) are moved to the first label as fallback."""
+        updated = deepcopy(knowledge_data)
+        existing_topics = updated.get("topics", {})
+        new_topics = {
+            label: {
+                "name": label,
+                "knowledge": [],
+                "examples": [],
+            }
+            for label in covered_labels
+        }
+        orphan_knowledge: list[dict] = []
+        orphan_examples: list[dict] = []
+        for key, payload in existing_topics.items():
+            label = normalize_topic_label(payload.get("name") or key)
+            if label in new_topics:
+                new_topics[label]["knowledge"] = deepcopy(payload.get("knowledge", []))
+                new_topics[label]["examples"] = deepcopy(payload.get("examples", []))
+            else:
+                orphan_knowledge.extend(deepcopy(payload.get("knowledge", [])))
+                orphan_examples.extend(deepcopy(payload.get("examples", [])))
+        fallback_label = covered_labels[0] if covered_labels else None
+        if fallback_label:
+            new_topics[fallback_label]["knowledge"].extend(orphan_knowledge)
+            new_topics[fallback_label]["examples"].extend(orphan_examples)
+        updated["topics"] = new_topics
+        meta = get_template_meta({"topics": new_topics, "meta": updated.get("meta") or {}})
+        updated["meta"] = meta
+        return updated
+
+    async def sync_topic_structure_with_audit(
+        self,
+        db: AsyncSession,
+        knowledge: AIKnowledge,
+        covered_labels: list[str],
+        actor_user_id: int,
+    ) -> dict:
+        """Restructure topic buckets and write KnowledgeChangeLog entries for any orphan items
+        that are migrated to the fallback topic."""
+        existing_topics = (knowledge.knowledge_data or {}).get("topics", {})
+        fallback_label = covered_labels[0] if covered_labels else None
+
+        # Detect which existing topics will become orphans before restructuring
+        for key, payload in existing_topics.items():
+            label = normalize_topic_label(payload.get("name") or key)
+            if label not in covered_labels and fallback_label:
+                for item in payload.get("knowledge", []):
+                    db.add(KnowledgeChangeLog(
+                        knowledge_id=knowledge.id,
+                        target_item_id=item["id"],
+                        item_type="knowledge",
+                        action="topic_migration",
+                        source="class_config_update",
+                        before_data={"topic": key, **item},
+                        after_data={"topic": fallback_label, **item},
+                        actor_user_id=actor_user_id,
+                    ))
+                for item in payload.get("examples", []):
+                    db.add(KnowledgeChangeLog(
+                        knowledge_id=knowledge.id,
+                        target_item_id=item["id"],
+                        item_type="example",
+                        action="topic_migration",
+                        source="class_config_update",
+                        before_data={"topic": key, **item},
+                        after_data={"topic": fallback_label, **item},
+                        actor_user_id=actor_user_id,
+                    ))
+
+        return self.sync_topic_structure(knowledge.knowledge_data, covered_labels)
+
     async def apply_extractions(
         self,
         db: AsyncSession,
@@ -94,9 +187,7 @@ class KnowledgeService:
         changed = False
         data = deepcopy(knowledge.knowledge_data)
         for item in items:
-            topic = item.get("topic") or "general"
-            if topic not in data["topics"]:
-                topic = "general"
+            topic = self.resolve_topic_key(data.get("topics", {}), item.get("topic"))
             bucket_key = "knowledge" if item["type"] == "knowledge" else "examples"
             bucket = data["topics"][topic][bucket_key]
             merge_target = []
@@ -308,4 +399,3 @@ class KnowledgeService:
         knowledge.knowledge_data["version"] = knowledge.version
         knowledge.knowledge_data["updated_at"] = _now_iso()
         flag_modified(knowledge, "knowledge_data")
-

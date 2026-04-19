@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
@@ -108,12 +108,15 @@ async def manual_extract(
         select(ChatMessage)
         .where(ChatMessage.session_id == session_id)
         .order_by(ChatMessage.created_at.desc())
-        .limit(10)
+        .limit(40)
     )
     recent = list(reversed(result.scalars().all()))
     combined_text = "\n".join(f"[{m.role}] {m.content}" for m in recent)
     knowledge = await chat_service.knowledge_service.get_or_create_knowledge(db, session.student_id, session.class_id)
-    extracted = await chat_service.ai_service.extract_knowledge(combined_text)
+    extracted = await chat_service.ai_service.extract_knowledge(
+        combined_text,
+        learning_scope=knowledge.knowledge_data.get("meta") if knowledge.knowledge_data else None,
+    )
     changed = False
     if extracted.get("has_knowledge"):
         changed = await chat_service.knowledge_service.apply_extractions(
@@ -137,6 +140,7 @@ async def send_message(
         session,
         user_id=student.id,
         content=payload.content,
+        focus=payload.focus,
     )
     await db.commit()
     return SendMessageResponse(
@@ -146,6 +150,27 @@ async def send_message(
         extracted=extracted,
         knowledge_version=knowledge_version,
     )
+
+
+@router.post("/classes/{class_id}/rename-ai")
+async def rename_class_ai(
+    class_id: int,
+    payload: SessionUpdateRequest,
+    db: AsyncSession = Depends(get_db),
+    student: User = Depends(require_student),
+) -> dict:
+    """Bulk-update ai_name for all teach sessions belonging to this student in this class."""
+    await db.execute(
+        update(ChatSession)
+        .where(
+            ChatSession.student_id == student.id,
+            ChatSession.class_id == class_id,
+            ChatSession.session_type == "teach",
+        )
+        .values(ai_name=payload.ai_name)
+    )
+    await db.commit()
+    return {"updated": True}
 
 
 @router.post("/student-test/mcq", response_model=SendMessageResponse)
@@ -175,4 +200,3 @@ async def answer_student_mcq(
         extracted=None,
         knowledge_version=None,
     )
-

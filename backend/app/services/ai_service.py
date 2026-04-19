@@ -15,13 +15,15 @@ from app.prompts.self_test import build_student_test_system_prompt
 from app.prompts.summary import build_summary_prompt
 from app.prompts.teach import build_teach_system_prompt
 from app.prompts.test_answer import build_test_prompt
+from app.utils.constants import normalize_covered_topics, normalize_topic_label
 
 
 TOPIC_KEYWORDS = {
-    "subject_clause": ["主语从句", "subject clause", "subject"],
-    "object_clause": ["宾语从句", "object clause", "宾语"],
-    "predicative_clause": ["表语从句", "predicative clause", "表语"],
-    "appositive_clause": ["同位语从句", "appositive clause", "同位语"],
+    "主语从句": ["主语从句", "subject clause", "subject"],
+    "宾语从句": ["宾语从句", "object clause", "宾语"],
+    "表语从句": ["表语从句", "predicative clause", "表语"],
+    "同位语从句": ["同位语从句", "appositive clause", "同位语"],
+    "通用": ["通用", "总规则", "概述", "一般", "整体"],
 }
 
 GRAMMAR_HINTS = [
@@ -79,16 +81,16 @@ class AIService:
     def refresh_settings(self) -> None:
         self.settings = get_settings()
 
-    async def extract_knowledge(self, student_message: str) -> dict[str, Any]:
+    async def extract_knowledge(self, student_message: str, learning_scope: dict[str, Any] | None = None) -> dict[str, Any]:
         self.refresh_settings()
         if self._use_live_model:
             payload = await self._json_completion(
                 system_prompt="你是一个严格的知识提取助手，只返回 JSON。",
-                user_prompt=build_extract_prompt(student_message),
+                user_prompt=build_extract_prompt(student_message, learning_scope=learning_scope),
             )
             if payload:
                 return payload
-        return self._mock_extract_knowledge(student_message)
+        return self._mock_extract_knowledge(student_message, learning_scope=learning_scope)
 
     async def decide_merge(self, item: dict[str, Any], existing_items: list[dict[str, Any]]) -> dict[str, Any]:
         self.refresh_settings()
@@ -128,10 +130,17 @@ class AIService:
         summary: str | None,
         recent_messages: list[dict[str, str]],
         ai_name: str | None = None,
+        learning_scope: dict[str, Any] | None = None,
+        focus: str | None = None,
     ) -> str:
         self.refresh_settings()
         if self._use_live_model:
-            messages = [{"role": "system", "content": build_teach_system_prompt(flat_knowledge, ai_name=ai_name)}]
+            messages = [
+                {
+                    "role": "system",
+                    "content": build_teach_system_prompt(flat_knowledge, ai_name=ai_name, learning_scope=learning_scope, focus=focus),
+                }
+            ]
             if summary:
                 messages.append({"role": "system", "content": f"历史摘要：{summary}"})
             messages.extend(recent_messages)
@@ -158,18 +167,24 @@ class AIService:
         options: dict[str, str] | None = None,
         conversational: bool = False,
         history: list[dict[str, str]] | None = None,
+        learning_scope: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         self.refresh_settings()
         if self._use_live_model:
             if options:
                 payload = await self._json_completion(
-                    system_prompt="You are a careful AI student. Return JSON only.",
-                    user_prompt=build_test_prompt(flat_knowledge, question_text, options),
+                    system_prompt="You are a careful student learner. Return JSON only.",
+                    user_prompt=build_test_prompt(flat_knowledge, question_text, options, learning_scope=learning_scope),
                 )
                 if payload:
                     return payload
             elif conversational:
-                content = await self._live_conversational_answer(flat_knowledge, question_text, history or [])
+                content = await self._live_conversational_answer(
+                    flat_knowledge,
+                    question_text,
+                    history or [],
+                    learning_scope=learning_scope,
+                )
                 if content:
                     return {
                         "answer": None,
@@ -232,12 +247,13 @@ class AIService:
         flat_knowledge: list[dict[str, Any]],
         question_text: str,
         history: list[dict[str, str]],
+        learning_scope: dict[str, Any] | None = None,
     ) -> str:
         try:
             messages = [
                 {
                     "role": "system",
-                    "content": build_student_test_system_prompt(flat_knowledge),
+                    "content": build_student_test_system_prompt(flat_knowledge, learning_scope=learning_scope),
                 }
             ]
             messages.extend(history)
@@ -248,14 +264,24 @@ class AIService:
         except Exception:  # noqa: BLE001
             return ""
 
-    def _mock_extract_knowledge(self, student_message: str) -> dict[str, Any]:
+    def _choose_topic_for_mock(self, student_message: str, learning_scope: dict[str, Any] | None = None) -> str:
+        lowered = student_message.lower()
+        topic_labels = normalize_covered_topics(
+            (learning_scope or {}).get("covered_topic_labels") or (learning_scope or {}).get("covered_topics")
+        )
+        for label in topic_labels:
+            normalized_label = normalize_topic_label(label)
+            keyword_candidates = TOPIC_KEYWORDS.get(normalized_label, []) + [normalized_label]
+            if any(keyword.lower() in lowered for keyword in keyword_candidates if keyword):
+                return normalized_label
+        if "通用" in topic_labels:
+            return "通用"
+        return topic_labels[0]
+
+    def _mock_extract_knowledge(self, student_message: str, learning_scope: dict[str, Any] | None = None) -> dict[str, Any]:
         lowered = student_message.lower()
         quoted = re.findall(r'"([^"]{6,})"', student_message) + re.findall(r"“([^”]{6,})”", student_message)
-        topic = "general"
-        for candidate, keywords in TOPIC_KEYWORDS.items():
-            if any(keyword in lowered for keyword in keywords):
-                topic = candidate
-                break
+        topic = self._choose_topic_for_mock(student_message, learning_scope=learning_scope)
         items: list[dict[str, Any]] = []
         if any(hint in lowered for hint in GRAMMAR_HINTS) or quoted:
             if student_message.strip():
