@@ -67,7 +67,7 @@ class Settings:
     deepseek_model: str = field(default_factory=lambda: os.getenv("DEEPSEEK_MODEL", "deepseek-chat"))
     mock_ai_enabled: bool = field(default_factory=lambda: _env_bool("MOCK_AI_ENABLED", True))
     session_summary_trigger_turns: int = field(default_factory=lambda: _env_int("SESSION_SUMMARY_TRIGGER_TURNS", 20))
-    session_recent_messages: int = field(default_factory=lambda: _env_int("SESSION_RECENT_MESSAGES", 6))
+    session_recent_messages: int = field(default_factory=lambda: _env_int("SESSION_RECENT_MESSAGES", 10))
     test_worker_poll_interval_seconds: int = field(
         default_factory=lambda: _env_int("TEST_WORKER_POLL_INTERVAL_SECONDS", 2)
     )
