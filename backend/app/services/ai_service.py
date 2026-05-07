@@ -224,6 +224,9 @@ class AIService:
             payload["response_format"] = response_format
         async with httpx.AsyncClient(timeout=45) as client:
             response = await client.post(url, headers=headers, json=payload)
+            if response.status_code >= 400:
+                print(f"[DeepSeek ERROR] status={response.status_code} body={response.text}")
+                print(f"[DeepSeek ERROR] model={self.settings.deepseek_model} msg_count={len(messages)}")
             response.raise_for_status()
             data = response.json()
         return data["choices"][0]["message"]["content"].strip()
