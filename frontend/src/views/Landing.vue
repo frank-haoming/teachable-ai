@@ -44,8 +44,8 @@
             <span class="eyebrow">Teach Flow</span>
             <h3>学生用自然语言教 AI</h3>
             <p class="preview-dialogue">
-              <span class="d-student">「牛顿第二定律：F = ma，合外力等于质量乘加速度。」</span>
-              <span class="d-ai">「明白了！那如果质量不变，力越大，加速度就越大对吗？你能再举个例子吗？」</span>
+              <span class="d-student">「宾语从句就是一个句子作动词的宾语，比如 I think that he is right，that 引导的从句就是 think 的宾语。」</span>
+              <span class="d-ai">「原来如此！那 that 是不是可以省略呢？你能再举一个 that 省略的例子吗？」</span>
             </p>
           </div>
           <div class="preview-grid">
@@ -83,39 +83,6 @@
         </article>
       </section>
 
-      <!-- Subject showcase -->
-      <section class="page-shell subject-row">
-        <span class="eyebrow">可用于任何学科</span>
-        <div class="subject-tags">
-          <span v-for="subject in subjects" :key="subject" class="subject-tag">{{ subject }}</span>
-        </div>
-      </section>
-
-      <!-- Trust band -->
-      <section class="page-shell trust-band glass-card">
-        <div class="trust-band__copy">
-          <span class="eyebrow">为何选择以教促学？</span>
-          <h2>教别人，是检验自己理解深度的最佳方式。</h2>
-          <p>
-            "以教促学"（Learning by Teaching）是被大量认知科学研究证实的高效学习策略。
-            Apprentice AI 将这一理念落地为可量化、可分析的数字课堂体验。
-          </p>
-        </div>
-        <div class="trust-stats">
-          <div class="stat-card">
-            <strong>AI 专属记忆</strong>
-            <p>每位学生有独立的 AI，教什么记什么</p>
-          </div>
-          <div class="stat-card">
-            <strong>自定义班级</strong>
-            <p>教师创建班级，设定知识框架</p>
-          </div>
-          <div class="stat-card">
-            <strong>实时分析</strong>
-            <p>覆盖率与修正次数可视化呈现</p>
-          </div>
-        </div>
-      </section>
     </main>
 
     <footer class="landing-footer page-shell">
@@ -126,8 +93,6 @@
 
 <script setup>
 import BrandLockup from "@/components/BrandLockup.vue";
-
-const subjects = ["英语语法", "数学推导", "物理定律", "编程概念", "历史事件", "化学方程式", "逻辑推理", "……任何学科"];
 </script>
 
 <style scoped>
@@ -274,78 +239,6 @@ const subjects = ["英语语法", "数学推导", "物理定律", "编程概念"
   color: var(--aa-text);
 }
 
-/* Subject row */
-.subject-row {
-  padding: 28px 0;
-  display: flex;
-  flex-direction: column;
-  gap: 14px;
-}
-
-.subject-tags {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 10px;
-}
-
-.subject-tag {
-  padding: 8px 18px;
-  border-radius: 999px;
-  background: rgba(255, 255, 255, 0.9);
-  border: 1px solid var(--aa-border);
-  font-size: 0.92rem;
-  color: var(--aa-text);
-  box-shadow: var(--aa-shadow-soft);
-}
-
-/* Trust band */
-.trust-band {
-  margin-top: 8px;
-  padding: 36px 32px;
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 32px;
-  align-items: start;
-}
-
-.trust-band__copy h2 {
-  margin: 14px 0 12px;
-  font-family: "Crimson Pro", serif;
-  font-size: clamp(1.6rem, 1rem + 1.5vw, 2.4rem);
-  line-height: 1.2;
-}
-
-.trust-band__copy p {
-  color: var(--aa-text-soft);
-  line-height: 1.75;
-}
-
-.trust-stats {
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
-}
-
-.stat-card {
-  padding: 16px 20px;
-  border-radius: 18px;
-  background: rgba(255, 255, 255, 0.72);
-  border: 1px solid var(--aa-border);
-}
-
-.stat-card strong {
-  display: block;
-  font-size: 1rem;
-  margin-bottom: 4px;
-  color: var(--aa-primary-deep);
-}
-
-.stat-card p {
-  margin: 0;
-  color: var(--aa-text-soft);
-  font-size: 0.9rem;
-}
-
 /* Footer */
 .landing-footer {
   padding: 24px 0;
@@ -354,8 +247,7 @@ const subjects = ["英语语法", "数学推导", "物理定律", "编程概念"
 }
 
 @media (max-width: 1024px) {
-  .hero-layout,
-  .trust-band {
+  .hero-layout {
     grid-template-columns: 1fr;
   }
 

@@ -51,6 +51,8 @@ class SendMessageResponse(BaseModel):
     knowledge_changed: bool
     extracted: dict[str, Any] | None = None
     knowledge_version: int | None = None
+    touched_topics: list[str] = Field(default_factory=list)
+    touched_focuses: list[str] = Field(default_factory=list)
 
 
 class StudentMCQRequest(BaseModel):

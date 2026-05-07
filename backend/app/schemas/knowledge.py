@@ -12,10 +12,8 @@ class FlatKnowledgeItem(BaseModel):
     id: str
     topic: str
     topic_name: str
-    item_type: str
-    content: str | None = None
-    sentence: str | None = None
-    explanation: str | None = None
+    tag: str = ""
+    content: str = ""
     created_at: str | None = None
     updated_at: str | None = None
 
@@ -32,8 +30,7 @@ class KnowledgeCorrectionRequest(BaseModel):
 
 class DirectKnowledgeUpdateRequest(BaseModel):
     content: str | None = Field(default=None, max_length=4000)
-    sentence: str | None = Field(default=None, max_length=4000)
-    explanation: str | None = Field(default=None, max_length=4000)
+    tag: str | None = Field(default=None, max_length=40)
 
 
 class KnowledgeCorrectionResponse(BaseModel):

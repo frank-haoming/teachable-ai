@@ -1,11 +1,10 @@
 <template>
   <article class="knowledge-card section-card">
     <div class="knowledge-card__header">
-      <span class="data-chip">{{ item.item_type === "knowledge" ? "规则" : "例句" }}</span>
+      <span v-if="item.tag" class="data-chip">{{ item.tag }}</span>
       <span class="muted">{{ item.topic_name }}</span>
     </div>
-    <h3>{{ item.content || item.sentence }}</h3>
-    <p v-if="item.explanation" class="muted">{{ item.explanation }}</p>
+    <h3>{{ item.content }}</h3>
     <footer>
       <small>{{ item.updated_at ? `更新于 ${formatDate(item.updated_at)}` : `记录于 ${formatDate(item.created_at)}` }}</small>
       <div class="knowledge-card__actions">

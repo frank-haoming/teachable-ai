@@ -52,7 +52,7 @@ async def class_overview(
     topic_coverage = defaultdict(int)
     for record in knowledge_records:
         for topic, payload in record.knowledge_data.get("topics", {}).items():
-            if payload.get("knowledge") or payload.get("examples"):
+            if payload.get("knowledge"):
                 topic_coverage[topic] += 1
     average_knowledge_items = 0.0
     if knowledge_records:

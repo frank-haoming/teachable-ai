@@ -8,4 +8,5 @@ export const answerStudentMcq = async (payload) => (await api.post("/chat/studen
 export const updateSession = async (sessionId, payload) => (await api.patch(`/chat/sessions/${sessionId}`, payload)).data;
 export const manualExtract = async (sessionId) => (await api.post(`/chat/sessions/${sessionId}/extract`)).data;
 export const renameClassAi = async (classId, aiName) => (await api.post(`/chat/classes/${classId}/rename-ai`, { ai_name: aiName })).data;
+export const fetchFocusStats = async (classId) => (await api.get(`/chat/classes/${classId}/focus-stats`)).data;
 

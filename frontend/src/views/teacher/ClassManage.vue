@@ -36,6 +36,11 @@
         </div>
       </div>
 
+      <div v-if="classInfo.learning_direction" class="learning-direction-display">
+        <span class="eyebrow">本节课学习方向</span>
+        <p>{{ classInfo.learning_direction }}</p>
+      </div>
+
       <div class="scope-grid">
         <article class="scope-box">
           <h4>涵盖专题</h4>
@@ -85,7 +90,10 @@
           <EditableTagField v-model="scopeForm.covered_topics" placeholder="添加专题标签" />
         </el-form-item>
         <el-form-item label="知识维度（聚焦按钮会用到这些）">
-          <EditableTagField v-model="scopeForm.knowledge_focuses" placeholder="添加维度标签" :locked-values="['通用']" helper="「通用」维度不可删除，始终保留在首位。" />
+          <EditableTagField v-model="scopeForm.knowledge_focuses" placeholder="添加维度标签" />
+        </el-form-item>
+        <el-form-item label="学习方向（每节课可更新，引导 AI 关注方向）">
+          <el-input v-model="scopeForm.learning_direction" type="textarea" :autosize="{ minRows: 2, maxRows: 4 }" maxlength="300" show-word-limit placeholder="例如：本节课重点关注宾语从句中 that 的省略规则" />
         </el-form-item>
       </el-form>
       <template #footer>
@@ -118,6 +126,7 @@ const scopeForm = reactive({
   subject_description: "",
   covered_topics: [],
   knowledge_focuses: [],
+  learning_direction: "",
 });
 
 const load = async () => {
@@ -130,6 +139,7 @@ const openEditScope = () => {
   scopeForm.subject_description = classInfo.value.subject_description || "";
   scopeForm.covered_topics = [...(classInfo.value.covered_topics || [])];
   scopeForm.knowledge_focuses = [...(classInfo.value.knowledge_focuses || [])];
+  scopeForm.learning_direction = classInfo.value.learning_direction || "";
   editScopeDialog.value = true;
 };
 
@@ -141,6 +151,7 @@ const saveScope = async () => {
       subject_description: scopeForm.subject_description,
       covered_topics: scopeForm.covered_topics,
       knowledge_focuses: scopeForm.knowledge_focuses,
+      learning_direction: scopeForm.learning_direction,
     });
     editScopeDialog.value = false;
     await load();
@@ -172,6 +183,25 @@ onMounted(load);
   margin: 12px 0 8px;
 }
 
+
+.learning-direction-display {
+  margin-bottom: 18px;
+  padding: 14px 18px;
+  border-radius: 14px;
+  background: rgba(245, 158, 11, 0.06);
+  border: 1px solid rgba(245, 158, 11, 0.18);
+}
+
+.learning-direction-display .eyebrow {
+  color: #92400e;
+}
+
+.learning-direction-display p {
+  margin: 8px 0 0;
+  color: #78350f;
+  font-size: 0.95rem;
+  line-height: 1.65;
+}
 
 .scope-grid {
   display: grid;

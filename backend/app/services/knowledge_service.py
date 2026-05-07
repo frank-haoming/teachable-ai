@@ -48,32 +48,41 @@ class KnowledgeService:
         await db.flush()
         return record
 
+    # ------------------------------------------------------------------
+    # Migration helper: read both knowledge[] and legacy examples[]
+    # ------------------------------------------------------------------
+    def _migrate_topic_payload(self, payload: dict) -> list[dict]:
+        """Return a unified list of items from both knowledge[] and legacy examples[].
+        Legacy examples are converted: {id, content: "sentence -- explanation", tag: "例子", ...}."""
+        items: list[dict] = []
+        for item in payload.get("knowledge", []):
+            items.append(item)
+        for item in payload.get("examples", []):
+            sentence = item.get("sentence", "")
+            explanation = item.get("explanation", "")
+            content = f"{sentence} -- {explanation}" if explanation else sentence
+            items.append({
+                "id": item.get("id", f"k_{uuid4().hex[:8]}"),
+                "content": content,
+                "tag": "例子",
+                "created_at": item.get("created_at", _now_iso()),
+                "updated_at": item.get("updated_at", _now_iso()),
+            })
+        return items
+
     def flatten_knowledge(self, knowledge_data: dict) -> list[dict]:
         flattened: list[dict] = []
         topics = knowledge_data.get("topics", {})
         for topic, payload in topics.items():
             topic_name = normalize_topic_label(payload.get("name") or topic)
-            for item in payload.get("knowledge", []):
+            for item in self._migrate_topic_payload(payload):
                 flattened.append(
                     {
                         "id": item["id"],
                         "topic": topic,
                         "topic_name": topic_name,
-                        "item_type": "knowledge",
-                        "content": item.get("content"),
-                        "created_at": item.get("created_at"),
-                        "updated_at": item.get("updated_at"),
-                    }
-                )
-            for item in payload.get("examples", []):
-                flattened.append(
-                    {
-                        "id": item["id"],
-                        "topic": topic,
-                        "topic_name": topic_name,
-                        "item_type": "example",
-                        "sentence": item.get("sentence"),
-                        "explanation": item.get("explanation"),
+                        "tag": item.get("tag", ""),
+                        "content": item.get("content", ""),
                         "created_at": item.get("created_at"),
                         "updated_at": item.get("updated_at"),
                     }
@@ -86,50 +95,55 @@ class KnowledgeService:
 
     def resolve_topic_key(self, topics: dict, requested_topic: str | None) -> str:
         if not topics:
-            return normalize_topic_label(requested_topic) or "通用"
+            return normalize_topic_label(requested_topic) or "其他"
         candidate = normalize_topic_label(requested_topic)
         if candidate and candidate in topics:
             return candidate
         for key, payload in topics.items():
             if normalize_topic_label(payload.get("name") or key) == candidate:
                 return key
-        if candidate:
-            lowered = candidate.lower()
-            for key, payload in topics.items():
-                label = normalize_topic_label(payload.get("name") or key)
-                if lowered in label.lower() or label.lower() in lowered:
-                    return key
-        if "通用" in topics:
-            return "通用"
-        return next(iter(topics))
+        # No match found -- use or create "其他" bucket
+        if "其他" in topics:
+            return "其他"
+        # Create "其他" bucket on the fly
+        topics["其他"] = {"name": "其他", "knowledge": []}
+        return "其他"
 
     def sync_topic_structure(self, knowledge_data: dict, covered_labels: list[str]) -> dict:
         """Pure function: restructure topic buckets to match covered_labels.
-        Orphan items (from removed topics) are moved to the first label as fallback."""
+        Orphan items (from removed topics) are moved to '其他' if it has items, else to the first label."""
         updated = deepcopy(knowledge_data)
         existing_topics = updated.get("topics", {})
         new_topics = {
             label: {
                 "name": label,
                 "knowledge": [],
-                "examples": [],
             }
             for label in covered_labels
         }
-        orphan_knowledge: list[dict] = []
-        orphan_examples: list[dict] = []
+        orphan_items: list[dict] = []
         for key, payload in existing_topics.items():
             label = normalize_topic_label(payload.get("name") or key)
             if label in new_topics:
-                new_topics[label]["knowledge"] = deepcopy(payload.get("knowledge", []))
-                new_topics[label]["examples"] = deepcopy(payload.get("examples", []))
+                new_topics[label]["knowledge"] = deepcopy(self._migrate_topic_payload(payload))
             else:
-                orphan_knowledge.extend(deepcopy(payload.get("knowledge", [])))
-                orphan_examples.extend(deepcopy(payload.get("examples", [])))
+                orphan_items.extend(deepcopy(self._migrate_topic_payload(payload)))
+        # Preserve "其他" bucket if it has items
+        qita_items: list[dict] = []
+        if "其他" in existing_topics and "其他" not in new_topics:
+            qita_items = deepcopy(self._migrate_topic_payload(existing_topics["其他"]))
+        all_orphans = orphan_items + qita_items
+        if all_orphans:
+            if "其他" not in new_topics:
+                new_topics["其他"] = {"name": "其他", "knowledge": []}
+            new_topics["其他"]["knowledge"].extend(all_orphans)
+        elif "其他" in new_topics and not new_topics["其他"]["knowledge"]:
+            # Only keep 其他 if it actually has items
+            pass
+        # Fallback: if there are orphans and no 其他, put in first label
         fallback_label = covered_labels[0] if covered_labels else None
-        if fallback_label:
-            new_topics[fallback_label]["knowledge"].extend(orphan_knowledge)
-            new_topics[fallback_label]["examples"].extend(orphan_examples)
+        if orphan_items and "其他" not in new_topics and fallback_label:
+            new_topics[fallback_label]["knowledge"].extend(orphan_items)
         updated["topics"] = new_topics
         meta = get_template_meta({"topics": new_topics, "meta": updated.get("meta") or {}})
         updated["meta"] = meta
@@ -145,28 +159,17 @@ class KnowledgeService:
         """Restructure topic buckets and write KnowledgeChangeLog entries for any orphan items
         that are migrated to the fallback topic."""
         existing_topics = (knowledge.knowledge_data or {}).get("topics", {})
-        fallback_label = covered_labels[0] if covered_labels else None
+        # Determine fallback: "其他" for orphans
+        fallback_label = "其他"
 
-        # Detect which existing topics will become orphans before restructuring
         for key, payload in existing_topics.items():
             label = normalize_topic_label(payload.get("name") or key)
-            if label not in covered_labels and fallback_label:
-                for item in payload.get("knowledge", []):
+            if label not in covered_labels:
+                for item in self._migrate_topic_payload(payload):
                     db.add(KnowledgeChangeLog(
                         knowledge_id=knowledge.id,
                         target_item_id=item["id"],
                         item_type="knowledge",
-                        action="topic_migration",
-                        source="class_config_update",
-                        before_data={"topic": key, **item},
-                        after_data={"topic": fallback_label, **item},
-                        actor_user_id=actor_user_id,
-                    ))
-                for item in payload.get("examples", []):
-                    db.add(KnowledgeChangeLog(
-                        knowledge_id=knowledge.id,
-                        target_item_id=item["id"],
-                        item_type="example",
                         action="topic_migration",
                         source="class_config_update",
                         before_data={"topic": key, **item},
@@ -188,18 +191,15 @@ class KnowledgeService:
         data = deepcopy(knowledge.knowledge_data)
         for item in items:
             topic = self.resolve_topic_key(data.get("topics", {}), item.get("topic"))
-            bucket_key = "knowledge" if item["type"] == "knowledge" else "examples"
-            bucket = data["topics"][topic][bucket_key]
-            merge_target = []
-            for existing in bucket:
-                merge_target.append(
-                    {
-                        "id": existing["id"],
-                        "content": existing.get("content"),
-                        "sentence": existing.get("sentence"),
-                        "explanation": existing.get("explanation"),
-                    }
-                )
+            bucket = data["topics"][topic].get("knowledge", [])
+            if "knowledge" not in data["topics"][topic]:
+                data["topics"][topic]["knowledge"] = bucket
+            tag = item.get("tag", "")
+            merge_target = [
+                {"id": e["id"], "content": e.get("content") or ""}
+                for e in bucket
+                if e.get("tag", "") == tag
+            ]
             decision = await self.ai_service.decide_merge(item, merge_target)
             action = decision.get("action", "add")
             if action == "ignore":
@@ -208,22 +208,20 @@ class KnowledgeService:
             if action == "revise":
                 action = "update"
                 if decision.get("new_content"):
-                    key_field = "content" if bucket_key == "knowledge" else "sentence"
-                    decision[key_field] = decision["new_content"]
+                    decision["content"] = decision["new_content"]
             if action == "supplement" and decision.get("target_id"):
                 target = next((e for e in bucket if e["id"] == decision["target_id"]), None)
                 if target:
                     before_data = deepcopy(target)
-                    append_text = decision.get("appended_content") or item.get("content") or item.get("sentence")
+                    append_text = decision.get("appended_content") or item.get("content")
                     if append_text:
-                        key_field = "content" if bucket_key == "knowledge" else "sentence"
-                        existing_val = target.get(key_field) or ""
-                        target[key_field] = f"{existing_val}；{append_text}" if existing_val else append_text
+                        existing_val = target.get("content") or ""
+                        target["content"] = f"{existing_val}；{append_text}" if existing_val else append_text
                         target["updated_at"] = _now_iso()
                         db.add(KnowledgeChangeLog(
                             knowledge_id=knowledge.id,
                             target_item_id=target["id"],
-                            item_type=item["type"],
+                            item_type="knowledge",
                             action="update",
                             source=source,
                             before_data=before_data,
@@ -238,21 +236,13 @@ class KnowledgeService:
                     action = "add"
                 else:
                     before_data = deepcopy(target)
-                    if bucket_key == "knowledge":
-                        target["content"] = decision.get("content") or item.get("content") or target.get("content")
-                    else:
-                        target["sentence"] = decision.get("sentence") or item.get("sentence") or target.get("sentence")
-                        target["explanation"] = (
-                            decision.get("explanation")
-                            or item.get("explanation")
-                            or target.get("explanation")
-                        )
+                    target["content"] = decision.get("content") or item.get("content") or target.get("content")
                     target["updated_at"] = _now_iso()
                     db.add(
                         KnowledgeChangeLog(
                             knowledge_id=knowledge.id,
                             target_item_id=target["id"],
-                            item_type=item["type"],
+                            item_type="knowledge",
                             action="update",
                             source=source,
                             before_data=before_data,
@@ -264,21 +254,18 @@ class KnowledgeService:
                     continue
             if action == "add":
                 entry = {
-                    "id": f'{"k" if item["type"] == "knowledge" else "e"}_{uuid4().hex[:8]}',
+                    "id": f"k_{uuid4().hex[:8]}",
+                    "content": item.get("content"),
+                    "tag": tag,
                     "created_at": _now_iso(),
                     "updated_at": _now_iso(),
                 }
-                if bucket_key == "knowledge":
-                    entry["content"] = item.get("content")
-                else:
-                    entry["sentence"] = item.get("sentence")
-                    entry["explanation"] = item.get("explanation")
                 bucket.append(entry)
                 db.add(
                     KnowledgeChangeLog(
                         knowledge_id=knowledge.id,
                         target_item_id=entry["id"],
-                        item_type=item["type"],
+                        item_type="knowledge",
                         action="create",
                         source=source,
                         before_data=None,
@@ -317,7 +304,7 @@ class KnowledgeService:
             db,
             knowledge,
             decision["target_id"],
-            {"content": decision.get("new_content"), "sentence": decision.get("new_content")},
+            {"content": decision.get("new_content")},
             actor_user_id,
             source="dialogue",
         )
@@ -336,18 +323,17 @@ class KnowledgeService:
         if item is None or bucket_key is None:
             raise ValueError("Knowledge item not found.")
         before_data = deepcopy(item)
-        if bucket_key == "knowledge":
-            item["content"] = payload.get("content") or item.get("content")
-        else:
-            item["sentence"] = payload.get("sentence") or payload.get("content") or item.get("sentence")
-            item["explanation"] = payload.get("explanation") or item.get("explanation")
+        if payload.get("content") is not None:
+            item["content"] = payload["content"]
+        if payload.get("tag") is not None:
+            item["tag"] = payload["tag"]
         item["updated_at"] = _now_iso()
         self._touch(knowledge)
         db.add(
             KnowledgeChangeLog(
                 knowledge_id=knowledge.id,
                 target_item_id=item_id,
-                item_type="knowledge" if bucket_key == "knowledge" else "example",
+                item_type="knowledge",
                 action="update",
                 source=source,
                 before_data=before_data,
@@ -375,7 +361,7 @@ class KnowledgeService:
             KnowledgeChangeLog(
                 knowledge_id=knowledge.id,
                 target_item_id=item_id,
-                item_type="knowledge" if bucket_key == "knowledge" else "example",
+                item_type="knowledge",
                 action="delete",
                 source=source,
                 before_data=deepcopy(item),

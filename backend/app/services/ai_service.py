@@ -131,14 +131,13 @@ class AIService:
         recent_messages: list[dict[str, str]],
         ai_name: str | None = None,
         learning_scope: dict[str, Any] | None = None,
-        focus: str | None = None,
     ) -> str:
         self.refresh_settings()
         if self._use_live_model:
             messages = [
                 {
                     "role": "system",
-                    "content": build_teach_system_prompt(flat_knowledge, ai_name=ai_name, learning_scope=learning_scope, focus=focus),
+                    "content": build_teach_system_prompt(flat_knowledge, ai_name=ai_name, learning_scope=learning_scope),
                 }
             ]
             if summary:
@@ -276,19 +275,28 @@ class AIService:
                 return normalized_label
         if "通用" in topic_labels:
             return "通用"
-        return topic_labels[0]
+        return "其他"
 
     def _mock_extract_knowledge(self, student_message: str, learning_scope: dict[str, Any] | None = None) -> dict[str, Any]:
         lowered = student_message.lower()
-        quoted = re.findall(r'"([^"]{6,})"', student_message) + re.findall(r"“([^”]{6,})”", student_message)
+        quoted = re.findall(r'”([^”]{6,})”', student_message) + re.findall(r'“([^”]{6,})”', student_message)
         topic = self._choose_topic_for_mock(student_message, learning_scope=learning_scope)
         items: list[dict[str, Any]] = []
+        touched_focuses: list[str] = []
+
+        # Detect focus tags from knowledge_focuses
+        knowledge_focuses = (learning_scope or {}).get("knowledge_focuses", [])
+        for focus in knowledge_focuses:
+            if focus.lower() in lowered:
+                touched_focuses.append(focus)
+
         if any(hint in lowered for hint in GRAMMAR_HINTS) or quoted:
+            tag = touched_focuses[0] if touched_focuses else ""
             if student_message.strip():
                 items.append(
                     {
-                        "type": "knowledge",
                         "topic": topic,
+                        "tag": tag,
                         "content": student_message.strip()[:240],
                         "created_at": _now_iso(),
                     }
@@ -296,20 +304,23 @@ class AIService:
         for sentence in quoted:
             items.append(
                 {
-                    "type": "example",
                     "topic": topic,
-                    "sentence": sentence.strip(),
-                    "explanation": "学生提供的例句",
+                    "tag": "例子",
+                    "content": sentence.strip(),
                     "created_at": _now_iso(),
                 }
             )
+            if "例子" not in touched_focuses:
+                touched_focuses.append("例子")
         return {
             "has_knowledge": bool(items),
             "items": items,
+            "touched_topics": [topic] if items else [],
+            "touched_focuses": touched_focuses,
         }
 
     def _mock_merge(self, item: dict[str, Any], existing_items: list[dict[str, Any]]) -> dict[str, Any]:
-        key = "content" if item["type"] == "knowledge" else "sentence"
+        key = "content"
         new_text = _normalize(item.get(key))
         if not new_text:
             return {"action": "ignore"}
@@ -325,14 +336,12 @@ class AIService:
                     "action": "update",
                     "target_id": existing["id"],
                     key: merged_text,
-                    "explanation": item.get("explanation") or existing.get("explanation"),
                 }
             if _token_overlap(new_text, existing_text) >= 4:
                 return {
                     "action": "update",
                     "target_id": existing["id"],
                     key: item.get(key),
-                    "explanation": item.get("explanation") or existing.get("explanation"),
                 }
             overlap = _token_overlap(new_text, existing_text)
             if 2 <= overlap <= 3:
@@ -348,13 +357,13 @@ class AIService:
         if not flat_knowledge:
             return "我现在还是一张白纸，只记住了你刚刚开始教我的内容。你能先告诉我名词从句最基本的判断方法吗？"
 
-        rules = [item["content"] for item in flat_knowledge if item["item_type"] == "knowledge" and item.get("content")]
-        examples = [item["sentence"] for item in flat_knowledge if item["item_type"] == "example" and item.get("sentence")]
-        remembered = "；".join(rules[:2]) if rules else "一些你刚刚教给我的规则"
+        contents = [item["content"] for item in flat_knowledge if item.get("content")]
+        remembered = "；".join(contents[:2]) if contents else "一些你刚刚教给我的规则"
         if "?" in last_user or "？" in last_user:
             return f"根据你之前教我的，我会先从这些规则理解：{remembered}。如果这个问题超出了我学过的范围，我就还不太确定。你能再给我一个对应的例句让我确认吗？"
+        examples = [item["content"] for item in flat_knowledge if item.get("tag") == "例子" and item.get("content")]
         if examples:
-            return f"我先记住了：{remembered}。我也看到你给了例句，比如 “{examples[0]}”。我理解得对吗：我下次遇到类似结构时，应该先看从句在整句里充当什么成分？"
+            return f"我先记住了：{remembered}。我也看到你给了例句，比如「{examples[0]}」。我理解得对吗：我下次遇到类似结构时，应该先看从句在整句里充当什么成分？"
         return f"我记下来了：{remembered}。不过我还想再学得更稳一点，你能再给我一个例句或者一个容易混淆的情况吗？"
 
     def _mock_correction(self, student_message: str, flat_knowledge: list[dict[str, Any]]) -> dict[str, Any]:
@@ -365,7 +374,7 @@ class AIService:
 
         target = None
         for item in flat_knowledge:
-            label = item.get("content") or item.get("sentence") or ""
+            label = item.get("content", "")
             if label and (label[:8] in student_message or _token_overlap(label, student_message) >= 3):
                 target = item
                 break
@@ -396,7 +405,7 @@ class AIService:
         learned_text = " ".join(
             filter(
                 None,
-                [item.get("content") or item.get("sentence") for item in flat_knowledge],
+                [item.get("content", "") for item in flat_knowledge],
             )
         )
         if conversational or options is None:
@@ -407,7 +416,7 @@ class AIService:
                     "content": "我还没学到这个，所以只能说我不太确定。你可以先教我相关规则，再来考我一次吗？",
                 }
             snippet = next(
-                (item.get("content") or item.get("sentence") for item in flat_knowledge if _token_overlap(question_text, item.get("content") or item.get("sentence") or "") >= 2),
+                (item.get("content", "") for item in flat_knowledge if _token_overlap(question_text, item.get("content", "")) >= 2),
                 None,
             )
             return {

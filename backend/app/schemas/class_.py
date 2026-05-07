@@ -13,6 +13,7 @@ class ClassCreateRequest(BaseModel):
     subject_description: str | None = Field(default=None, max_length=300)
     covered_topics: list[str] = Field(default_factory=list)
     knowledge_focuses: list[str] = Field(default_factory=list)
+    learning_direction: str | None = Field(default=None, max_length=200)
 
 
 class ClassConfigUpdateRequest(BaseModel):
@@ -20,6 +21,7 @@ class ClassConfigUpdateRequest(BaseModel):
     subject_description: str | None = Field(default=None, max_length=300)
     covered_topics: list[str] = Field(default_factory=list)
     knowledge_focuses: list[str] = Field(default_factory=list)
+    learning_direction: str | None = Field(default=None, max_length=200)
 
 
 class ClassJoinRequest(BaseModel):
@@ -50,6 +52,8 @@ class ClassDetailResponse(BaseModel):
     covered_topics: list[str]
     covered_topic_labels: list[str]
     knowledge_focuses: list[str]
+    learning_direction: str = ""
+    learning_direction_updated_at: str = ""
     student_count: int
     knowledge_item_count: int
     students: list[StudentSummary]

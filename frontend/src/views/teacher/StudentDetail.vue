@@ -131,10 +131,12 @@ const flatKnowledge = computed(() => {
   const items = [];
   for (const [topic, payload] of Object.entries(data.topics)) {
     for (const item of payload.knowledge || []) {
-      items.push({ ...item, topic, item_type: "knowledge" });
+      items.push({ ...item, topic });
     }
-    for (const item of payload.examples || []) {
-      items.push({ ...item, topic, item_type: "example" });
+    // Backward compatibility: legacy examples array
+    for (const ex of payload.examples || []) {
+      const content = ex.content || [ex.sentence, ex.explanation].filter(Boolean).join(" —— ");
+      items.push({ ...ex, topic, content, tag: ex.tag || "例子" });
     }
   }
   return items.sort((a, b) => (b.created_at || "").localeCompare(a.created_at || ""));

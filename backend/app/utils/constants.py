@@ -37,7 +37,6 @@ DEFAULT_COVERED_TOPICS = [
     "同位语从句",
 ]
 DEFAULT_KNOWLEDGE_FOCUSES = [
-    "通用",
     "定义",
     "基本结构",
     "常见引导词",
@@ -77,8 +76,6 @@ def covered_topics_to_labels(covered_topics: list[str]) -> list[str]:
 
 def normalize_knowledge_focuses(knowledge_focuses: list[str] | None = None) -> list[str]:
     focuses = _dedupe_keep_order(list(knowledge_focuses or []))
-    if "通用" not in focuses:
-        focuses.insert(0, "通用")
     return focuses or DEFAULT_KNOWLEDGE_FOCUSES.copy()
 
 
@@ -98,7 +95,6 @@ def build_topic_buckets(raw_topics: list[str] | None = None) -> dict:
         label: {
             "name": label,
             "knowledge": [],
-            "examples": [],
         }
         for label in labels
     }
@@ -128,14 +124,16 @@ def get_template_meta(template: dict | None = None) -> dict:
     knowledge_focuses = normalize_knowledge_focuses(meta.get("knowledge_focuses"))
     subject_description = (meta.get("subject_description") or "").strip()
     if not subject_description:
-        scope_str = "\u3001".join(display_labels)
-        subject_description = "\u672c\u73ed\u56f4\u7ed5\u201c" + course_topic + "\u201d\u5c55\u5f00\uff0c\u5f53\u524d\u91cd\u70b9\u8986\u76d6\uff1a" + scope_str + "\u3002"
+        scope_str = "、".join(display_labels)
+        subject_description = "本班围绕“" + course_topic + "”展开，当前重点覆盖：" + scope_str + "。"
     return {
         "course_topic": course_topic,
         "subject_description": subject_description,
         "covered_topics": raw_topics,
         "covered_topic_labels": display_labels,
         "knowledge_focuses": knowledge_focuses,
+        "learning_direction": meta.get("learning_direction"),
+        "learning_direction_updated_at": meta.get("learning_direction_updated_at"),
     }
 
 
@@ -144,14 +142,15 @@ def build_default_knowledge_template(
     course_topic: str | None = None,
     covered_topics: list[str] | None = None,
     knowledge_focuses: list[str] | None = None,
+    learning_direction: str | None = None,
 ) -> dict:
     course_topic = (course_topic or DEFAULT_COURSE_TOPIC).strip() or DEFAULT_COURSE_TOPIC
     raw_topics = normalize_covered_topics(covered_topics) or DEFAULT_COVERED_TOPICS.copy()
     display_labels = covered_topics_to_labels(raw_topics) or list(raw_topics)
     normalized_focuses = normalize_knowledge_focuses(knowledge_focuses)
     if not (subject_description or "").strip():
-        scope_str = "\u3001".join(display_labels)
-        subject_description = "\u672c\u73ed\u56f4\u7ed5\u201c" + course_topic + "\u201d\u5c55\u5f00\uff0c\u5f53\u524d\u91cd\u70b9\u8986\u76d6\uff1a" + scope_str + "\u3002"
+        scope_str = "、".join(display_labels)
+        subject_description = "本班围绕“" + course_topic + "”展开，当前重点覆盖：" + scope_str + "。"
     else:
         subject_description = (subject_description or "").strip()
     template: dict = {
@@ -164,6 +163,7 @@ def build_default_knowledge_template(
             "covered_topics": raw_topics,
             "covered_topic_labels": display_labels,
             "knowledge_focuses": normalized_focuses,
+            "learning_direction": learning_direction,
         },
     }
     return template

@@ -46,29 +46,43 @@ async def _ensure_student_membership(db: AsyncSession, class_id: int, student_id
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not enrolled in this class.")
 
 
+def _merge_legacy_examples(payload: dict) -> list[dict]:
+    """Merge knowledge[] and legacy examples[] into a unified list."""
+    items: list[dict] = list(deepcopy(payload.get("knowledge", [])))
+    for item in payload.get("examples", []):
+        sentence = item.get("sentence", "")
+        explanation = item.get("explanation", "")
+        content = f"{sentence} -- {explanation}" if explanation else sentence
+        items.append({
+            "id": item.get("id", ""),
+            "content": content,
+            "tag": "例子",
+            "created_at": item.get("created_at"),
+            "updated_at": item.get("updated_at"),
+        })
+    return items
+
+
 def _sync_topics_for_template(existing_topics: dict, target_labels: list[str]) -> dict:
     new_topics = {
         label: {
             "name": label,
             "knowledge": [],
-            "examples": [],
         }
         for label in target_labels
     }
-    orphan_knowledge: list[dict] = []
-    orphan_examples: list[dict] = []
+    orphan_items: list[dict] = []
     for topic, payload in (existing_topics or {}).items():
         label = (payload.get("name") or topic).strip()
         if label in new_topics:
-            new_topics[label]["knowledge"] = deepcopy(payload.get("knowledge", []))
-            new_topics[label]["examples"] = deepcopy(payload.get("examples", []))
+            new_topics[label]["knowledge"] = _merge_legacy_examples(payload)
         else:
-            orphan_knowledge.extend(deepcopy(payload.get("knowledge", [])))
-            orphan_examples.extend(deepcopy(payload.get("examples", [])))
-    fallback = target_labels[0] if target_labels else None
-    if fallback:
-        new_topics[fallback]["knowledge"].extend(orphan_knowledge)
-        new_topics[fallback]["examples"].extend(orphan_examples)
+            orphan_items.extend(_merge_legacy_examples(payload))
+    # Preserve "其他" bucket if it has items
+    if orphan_items:
+        if "其他" not in new_topics:
+            new_topics["其他"] = {"name": "其他", "knowledge": []}
+        new_topics["其他"]["knowledge"].extend(orphan_items)
     return new_topics
 
 
@@ -78,12 +92,21 @@ async def _update_class_config(
     payload: ClassConfigUpdateRequest | ClassCreateRequest,
     actor_user_id: int | None = None,
 ) -> None:
+    new_direction = getattr(payload, "learning_direction", None)
+    old_template = classroom.knowledge_template or {}
+    old_direction = (old_template.get("meta") or {}).get("learning_direction")
     template = build_default_knowledge_template(
         subject_description=payload.subject_description,
         course_topic=payload.course_topic,
         covered_topics=payload.covered_topics,
         knowledge_focuses=payload.knowledge_focuses,
+        learning_direction=new_direction,
     )
+    # Track learning_direction change timestamp
+    if new_direction != old_direction and new_direction is not None:
+        template["meta"]["learning_direction_updated_at"] = datetime.now(timezone.utc).isoformat()
+    elif old_template.get("meta", {}).get("learning_direction_updated_at"):
+        template["meta"]["learning_direction_updated_at"] = old_template["meta"]["learning_direction_updated_at"]
     classroom.knowledge_template = template
     knowledge_result = await db.execute(select(AIKnowledge).where(AIKnowledge.class_id == classroom.id))
     records = list(knowledge_result.scalars().all())
@@ -161,6 +184,8 @@ async def update_class_config(
         covered_topics=template_meta["covered_topics"],
         covered_topic_labels=template_meta["covered_topic_labels"],
         knowledge_focuses=template_meta["knowledge_focuses"],
+        learning_direction=template_meta.get("learning_direction") or "",
+        learning_direction_updated_at=template_meta.get("learning_direction_updated_at") or "",
         student_count=len(students),
         knowledge_item_count=sum(knowledge_service.count_items(record.knowledge_data) for record in knowledge_records),
         students=[StudentSummary.model_validate(student) for student in students],
@@ -255,6 +280,8 @@ async def get_class_detail(
         covered_topics=template_meta["covered_topics"],
         covered_topic_labels=template_meta["covered_topic_labels"],
         knowledge_focuses=template_meta["knowledge_focuses"],
+        learning_direction=template_meta.get("learning_direction") or "",
+        learning_direction_updated_at=template_meta.get("learning_direction_updated_at") or "",
         student_count=len(students),
         knowledge_item_count=sum(knowledge_service.count_items(record.knowledge_data) for record in knowledge_records),
         students=[StudentSummary.model_validate(student) for student in students],

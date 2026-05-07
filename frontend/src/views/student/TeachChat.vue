@@ -18,6 +18,10 @@
       </div>
     </header>
 
+    <p v-if="classInfo?.learning_direction" class="learning-direction-badge">
+      学习方向：{{ classInfo.learning_direction }}
+    </p>
+
     <div class="split-layout">
       <section class="section-card chat-panel">
         <div ref="chatLogRef" class="chat-log">
@@ -36,16 +40,14 @@
         <div class="composer-shell">
           <div class="focus-chips">
             <span class="scope-label">本轮聚焦</span>
-            <button
+            <span
               v-for="topic in focusTopics"
               :key="topic"
-              type="button"
               class="focus-chip"
-              :class="{ 'focus-chip--active': activeFocus === topic }"
-              @click="toggleFocus(topic)"
-            >{{ topic }}</button>
+              :class="focusColorClass(topic)"
+              :title="`已教 ${focusStats[topic] || 0} 轮`"
+            >{{ topic }} ({{ focusStats[topic] || 0 }})</span>
           </div>
-          <p class="focus-caption">当前讨论聚焦于：<strong>{{ activeFocus }}</strong>。</p>
           <el-form class="chat-form" @submit.prevent="submitMessage">
             <el-form-item label="教学输入">
               <el-input
@@ -86,11 +88,11 @@ import { ElMessage, ElMessageBox, ElNotification } from "element-plus";
 import { useRoute, useRouter } from "vue-router";
 
 import { fetchClassDetail } from "@/api/classes";
-import { manualExtract, renameClassAi } from "@/api/chat";
+import { fetchFocusStats, manualExtract, renameClassAi } from "@/api/chat";
 import { fetchFlatKnowledge } from "@/api/knowledge";
 import ChatBubble from "@/components/ChatBubble.vue";
 import KnowledgePanel from "@/components/KnowledgePanel.vue";
-import { DEFAULT_KNOWLEDGE_FOCUSES, resolveKnowledgeFocuses } from "@/constants/classScope";
+import { resolveKnowledgeFocuses } from "@/constants/classScope";
 import { useAuthStore } from "@/stores/auth";
 import { useChatStore } from "@/stores/chat";
 
@@ -103,7 +105,6 @@ const props = defineProps({
 
 // Keys are scoped by both userId and classId so students on the same device don't bleed into each other
 const AI_NAME_KEY = (uid, cid) => `ai_name_${uid}_${cid}`;
-const TEACH_FOCUS_KEY = (uid, cid) => `teach_focus_${uid}_${cid}`;
 
 const authStore = useAuthStore();
 const chatStore = useChatStore();
@@ -118,29 +119,31 @@ const chatLogRef = ref(null);
 const nameDialog = ref(false);
 const aiNameInput = ref("");
 const aiName = ref(localStorage.getItem(AI_NAME_KEY(authStore.user?.id, props.classId)) || "");
-const activeFocus = ref("通用");
+const focusStats = ref({});
 const extracting = ref(false);
 
 const focusTopics = computed(() =>
-  resolveKnowledgeFocuses(classInfo.value?.knowledge_focuses?.length ? classInfo.value.knowledge_focuses : DEFAULT_KNOWLEDGE_FOCUSES),
+  resolveKnowledgeFocuses(classInfo.value?.knowledge_focuses || []),
 );
 
 const messages = computed(() => chatStore.messagesBySession[session.value?.id] || []);
 const inputPlaceholder = computed(() => {
-  const focusHint = activeFocus.value && activeFocus.value !== "通用" ? `围绕“${activeFocus.value}”来教，` : "";
-  return `例如：${focusHint}宾语从句常作动词的宾语；I think that he is honest. 这里 that 可以省略。Ctrl+Enter 发送`;
+  return "例如：宾语从句常作动词的宾语；I think that he is honest. 这里 that 可以省略。Ctrl+Enter 发送";
 });
 
-const syncFocusSelection = () => {
-  // Only restore from localStorage if the saved value is still in the current topic list.
-  // If it's not (e.g. teacher changed the focuses), fall back silently without overwriting storage.
-  const saved = localStorage.getItem(TEACH_FOCUS_KEY(authStore.user?.id, props.classId)) || "通用";
-  activeFocus.value = focusTopics.value.includes(saved) ? saved : (focusTopics.value[0] || "通用");
+const loadFocusStats = async () => {
+  try {
+    focusStats.value = await fetchFocusStats(Number(props.classId));
+  } catch {
+    // non-critical
+  }
 };
 
-const toggleFocus = (topic) => {
-  activeFocus.value = topic;
-  localStorage.setItem(TEACH_FOCUS_KEY(authStore.user?.id, props.classId), topic);
+const focusColorClass = (topic) => {
+  const count = focusStats.value[topic] || 0;
+  if (count >= 4) return "focus--green";
+  if (count >= 1) return "focus--yellow";
+  return "focus--red";
 };
 
 const scrollToBottom = async () => {
@@ -166,7 +169,7 @@ const hydrateCorrectionFromRoute = () => {
 
 const bootstrap = async () => {
   classInfo.value = await fetchClassDetail(props.classId);
-  syncFocusSelection();
+  await loadFocusStats();
   await chatStore.loadSessions({ class_id: Number(props.classId), session_type: "teach" });
 
   const sessionIdFromQuery = route.query.session ? Number(route.query.session) : null;
@@ -189,7 +192,7 @@ const bootstrap = async () => {
 };
 
 const seedCorrection = (item) => {
-  const content = item.content || item.sentence;
+  const content = item.content;
   correctionSeed.value = `我发现你关于"${content}"的理解似乎有误，应该改成：`;
   draft.value = correctionSeed.value;
 };
@@ -236,14 +239,13 @@ const confirmNewSession = async () => {
 const submitMessage = async () => {
   if (!draft.value.trim() || chatStore.loading) return;
   try {
-    const focus = activeFocus.value && activeFocus.value !== "通用" ? activeFocus.value : null;
     const result = await chatStore.pushMessage({
       session_id: session.value.id,
       content: draft.value,
-      focus,
     });
     draft.value = "";
     await loadKnowledge();
+    await loadFocusStats();
     await scrollToBottom();
     if (result?.knowledge_changed) {
       ElNotification({
@@ -280,11 +282,6 @@ const saveMemory = async () => {
 };
 
 onMounted(bootstrap);
-
-watch(
-  focusTopics,
-  () => syncFocusSelection(),
-);
 
 watch(
   () => route.query.seed,
@@ -380,17 +377,36 @@ watch(
   transition: all 180ms ease;
 }
 
-.focus-chip--active {
-  background: rgba(13, 148, 136, 0.12);
-  border-color: var(--aa-primary);
-  color: var(--aa-primary-deep);
+.focus--red {
+  background: rgba(220, 38, 38, 0.1);
+  border-color: rgba(220, 38, 38, 0.3);
+  color: #991b1b;
   font-weight: 600;
 }
 
-.focus-caption {
-  margin: 8px 0 2px;
-  color: var(--aa-text-soft);
-  font-size: 0.88rem;
+.focus--yellow {
+  background: rgba(234, 179, 8, 0.12);
+  border-color: rgba(234, 179, 8, 0.35);
+  color: #78350f;
+  font-weight: 600;
+}
+
+.focus--green {
+  background: rgba(22, 163, 74, 0.1);
+  border-color: rgba(22, 163, 74, 0.3);
+  color: #166534;
+  font-weight: 600;
+}
+
+.learning-direction-badge {
+  margin: 0 0 8px;
+  padding: 8px 16px;
+  border-radius: 12px;
+  background: rgba(245, 158, 11, 0.08);
+  border: 1px solid rgba(245, 158, 11, 0.2);
+  color: #92400e;
+  font-size: 0.92rem;
+  font-weight: 500;
   line-height: 1.6;
 }
 

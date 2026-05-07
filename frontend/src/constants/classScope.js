@@ -8,7 +8,6 @@ export const DEFAULT_COVERED_TOPICS = [
 ];
 
 export const DEFAULT_KNOWLEDGE_FOCUSES = [
-  "通用",
   "定义",
   "基本结构",
   "常见引导词",
@@ -31,7 +30,6 @@ export const resolveCoveredTopics = (values = []) => {
 
 export const resolveKnowledgeFocuses = (values = []) => {
   const deduped = dedupeNonEmpty(values);
-  if (!deduped.length) return [...DEFAULT_KNOWLEDGE_FOCUSES];
-  return deduped.includes("通用") ? deduped : ["通用", ...deduped];
+  return deduped.length ? deduped : [...DEFAULT_KNOWLEDGE_FOCUSES];
 };
 

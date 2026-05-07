@@ -6,7 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
 from app.deps import require_student
-from app.models import ChatMessage, ChatSession, ClassStudent, User
+from app.models import ChatMessage, ChatSession, ClassRoom, ClassStudent, User
 from app.schemas.chat import (
     MessageItem,
     SendMessageRequest,
@@ -149,6 +149,8 @@ async def send_message(
         knowledge_changed=knowledge_changed,
         extracted=extracted,
         knowledge_version=knowledge_version,
+        touched_topics=(extracted or {}).get("touched_topics", []),
+        touched_focuses=(extracted or {}).get("touched_focuses", []),
     )
 
 
@@ -200,3 +202,39 @@ async def answer_student_mcq(
         extracted=None,
         knowledge_version=None,
     )
+
+
+@router.get("/classes/{class_id}/focus-stats")
+async def get_focus_stats(
+    class_id: int,
+    db: AsyncSession = Depends(get_db),
+    student: User = Depends(require_student),
+) -> dict:
+    await _student_has_class_access(db, class_id, student.id)
+    classroom_result = await db.execute(select(ClassRoom).where(ClassRoom.id == class_id))
+    classroom = classroom_result.scalar_one_or_none()
+    reset_at = None
+    if classroom and classroom.knowledge_template:
+        reset_at_str = (classroom.knowledge_template.get("meta") or {}).get("learning_direction_updated_at", "")
+        if reset_at_str:
+            from datetime import datetime as dt
+
+            reset_at = dt.fromisoformat(reset_at_str)
+    stmt = (
+        select(ChatMessage)
+        .join(ChatSession, ChatMessage.session_id == ChatSession.id)
+        .where(
+            ChatSession.student_id == student.id,
+            ChatSession.class_id == class_id,
+            ChatSession.session_type == "teach",
+            ChatMessage.role == "user",
+        )
+    )
+    if reset_at:
+        stmt = stmt.where(ChatMessage.created_at >= reset_at)
+    result = await db.execute(stmt)
+    counts: dict[str, int] = {}
+    for msg in result.scalars().all():
+        for focus in (msg.meta or {}).get("touched_focuses", []):
+            counts[focus] = counts.get(focus, 0) + 1
+    return counts

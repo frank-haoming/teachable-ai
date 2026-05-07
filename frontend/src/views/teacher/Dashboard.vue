@@ -77,9 +77,8 @@
         <el-form-item label="知识维度">
           <EditableTagField
             v-model="knowledgeFocuses"
-            :locked-values="['通用']"
-            placeholder="输入一个维度后回车，例如：定义 / 方法 / 易错点 / 证明思路"
-            helper="“通用”会始终保留；其他维度由教师自定义，供学生在 Teach 时聚焦。"
+            placeholder="输入一个维度后回车，例如：定义 / 基本结构 / 常见引导词"
+            helper="由教师自定义知识维度，供学生在 Teach 时聚焦。"
           />
         </el-form-item>
       </el-form>

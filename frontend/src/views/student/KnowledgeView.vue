@@ -34,15 +34,15 @@
 
     <el-dialog v-model="editDialog" title="直接编辑知识条目" width="560px">
       <el-form label-position="top">
+        <el-form-item v-if="activeItem?.tag" label="标签">
+          <el-input :model-value="activeItem.tag" disabled />
+        </el-form-item>
         <el-form-item label="内容">
           <el-input
             v-model="editForm.main"
             type="textarea"
             :autosize="{ minRows: 3, maxRows: 6 }"
           />
-        </el-form-item>
-        <el-form-item v-if="activeItem?.item_type === 'example'" label="解释">
-          <el-input v-model="editForm.explanation" type="textarea" :autosize="{ minRows: 2, maxRows: 4 }" />
         </el-form-item>
       </el-form>
       <template #footer>
@@ -75,7 +75,7 @@ const items = ref([]);
 const changelog = ref([]);
 const editDialog = ref(false);
 const activeItem = ref(null);
-const editForm = ref({ main: "", explanation: "" });
+const editForm = ref({ main: "" });
 
 const ACTION_LABELS = {
   create: "新增",
@@ -87,7 +87,7 @@ const actionLabel = (action) => ACTION_LABELS[action] || action;
 
 const changelogSummary = (entry) => {
   const after = entry.after_data || entry.before_data || {};
-  const text = after.content || after.sentence || entry.target_item_id;
+  const text = after.content || entry.target_item_id;
   return text ? String(text).slice(0, 60) + (String(text).length > 60 ? "…" : "") : "—";
 };
 
@@ -102,18 +102,14 @@ const load = async () => {
 const openEdit = (item) => {
   activeItem.value = item;
   editForm.value = {
-    main: item.content || item.sentence || "",
-    explanation: item.explanation || "",
+    main: item.content || "",
   };
   editDialog.value = true;
 };
 
 const saveEdit = async () => {
   try {
-    const payload =
-      activeItem.value.item_type === "knowledge"
-        ? { content: editForm.value.main }
-        : { sentence: editForm.value.main, explanation: editForm.value.explanation };
+    const payload = { content: editForm.value.main };
     await updateKnowledgeItem(activeItem.value.id, props.classId, payload);
     editDialog.value = false;
     await load();

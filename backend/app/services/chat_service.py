@@ -91,6 +91,9 @@ class ChatService:
                 if (count_res.scalar() or 0) <= 1:
                     session.title = content[:24] + ("…" if len(content) > 24 else "")
             extracted = await self.ai_service.extract_knowledge(content, learning_scope=learning_scope)
+            touched_topics = extracted.get("touched_topics", [])
+            touched_focuses = extracted.get("touched_focuses", [])
+            user_message.meta = {**user_meta, "touched_topics": touched_topics, "touched_focuses": touched_focuses}
             user_message.knowledge_extracted = extracted if extracted.get("has_knowledge") else None
             if extracted.get("has_knowledge"):
                 knowledge_changed = await self.knowledge_service.apply_extractions(
@@ -109,7 +112,6 @@ class ChatService:
                 recent_messages,
                 ai_name=session.ai_name,
                 learning_scope=learning_scope,
-                focus=focus,
             )
             knowledge_version = knowledge.version
         elif session.session_type == SESSION_TYPE_STUDENT_TEST_FREE:
